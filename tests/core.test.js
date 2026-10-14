@@ -97,6 +97,16 @@ test('فشل التخزين لا يعلن نجاحًا ولا يغير الرص�
   await assert.rejects(()=>D.addFinancialEntry('admin-demo','expense',100,'فشل حفظ'),/فشل حفظ البيانات/);assert.equal(base.raw(),original);
 });
 
+test('JSON صحيح نحويًا لكنه ليس كائنًا أو يحتوي مجموعة بتركيب خاطئ لا يُستبدل تلقائيًا',()=>{
+  const s=memoryStorage('[]');D.setStorageForTests(s);assert.throws(()=>D.read(),/جذر بيانات التخزين/);assert.equal(s.raw(),'[]');
+  const malformed=memoryStorage(JSON.stringify({schemaVersion:2,customers:{important:'data'}}));D.setStorageForTests(malformed);const original=malformed.raw();
+  assert.throws(()=>D.read(),/بنية مجموعة customers غير صالحة/);assert.equal(malformed.raw(),original);
+});
+
+test('جمهور الإشعار غير المعروف يُرفض بدل توجيهه إلى جميع العملاء',async()=>{
+  const before=D.read().notifications.length;await assert.rejects(()=>D.sendLocalNotice('admin-demo','عنوان','نص','unknown',''),/جمهور الإشعار غير صالح/);assert.equal(D.read().notifications.length,before);
+});
+
 test('الهوية البصرية الأساسية سوداء والأزرار العائمة مثبتة خارج تمرير المحتوى',()=>{
   const root=path.join(__dirname,'..','apps');
   const customerCss=fs.readFileSync(path.join(root,'customer-base.css'),'utf8');
@@ -133,7 +143,7 @@ test('أيقونات الواجهات SVG ولا توجد مكتبات JavaScrip
   assert.match(ui,/settings:'<path d="M4 6h16M4 12h16M4 18h16"/); // منزلقات الإعدادات، بلا ترس.
   assert.match(admin,/icon\|\|'plus'/);assert.match(ui,/const icon=/);
   assert.doesNotMatch(html,/cdn\.jsdelivr\.net/i);
-  assert.match(html,/fonts\.googleapis\.com/i); // خط اختياري موثق؛ تعمل الواجهة بالبدائل عند انقطاع الإنترنت.
+  assert.doesNotMatch(html,/fonts\.googleapis\.com|fonts\.gstatic\.com/i); // لا تعتمد الواجهة على تحميل خط خارجي.
   assert.doesNotMatch(customer,/aria-hidden=\"true\">[⌂◉◇§⧉‹]/);
   assert.doesNotMatch(customer,/reset-seed/);
   const loginTemplate=admin.slice(admin.indexOf('function login()'),admin.indexOf('function body(d)'));
@@ -143,7 +153,80 @@ test('أيقونات الواجهات SVG ولا توجد مكتبات JavaScrip
 test('التهيئة الفعلية تبدأ فارغة دون سجلات أو إعدادات تجارية تجريبية',()=>{const d=D.seedData();for(const k of ['customers','companies','packages','paymentMethods','purchaseRequests','numbers','subscriptions','pointTransactions','tasks','financeEntries','notifications'])assert.equal(d[k].length,0,k);});
 
 test('حفظ الشركة يقبل الفواصل العربية ويحفظ إعدادات المهام',async()=>{
-  await D.saveCompany('admin-demo',{name:'شركة اختبار',prefixes:['77','78'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true});
+  await assert.rejects(()=>D.saveCompany('admin-demo',{name:'شركة متعارضة',prefixes:['77'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true}),/بادئة مطابقة/);
+  await assert.rejects(()=>D.saveCompany('admin-demo',{name:'شبكة تجريبية 77',prefixes:['79'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true}),/اسم الشركة مستخدم/);
+  await D.saveCompany('admin-demo',{name:'شركة اختبار',prefixes:['79','80'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true});
   const c=D.read().companies.find(x=>x.name==='شركة اختبار');
-  assert.ok(c);assert.deepEqual(c.prefixes,['77','78']);assert.deepEqual(c.lengths,[9]);assert.deepEqual(c.durations,[7,30]);assert.equal(c.taskSchedule.intervalDays,5);assert.equal(c.taskSchedule.expenseAmount,1250);
+  assert.ok(c);assert.deepEqual(c.prefixes,['79','80']);assert.deepEqual(c.lengths,[9]);assert.deepEqual(c.durations,[7,30]);assert.equal(c.taskSchedule.intervalDays,5);assert.equal(c.taskSchedule.expenseAmount,1250);
+});
+
+
+test('الاشتراك الملغى أو المستبدل لا يعامل على أنه اشتراك فعال لمجرد أن تاريخ نهايته مستقبلي',()=>{
+  const d=D.read();const s=d.subscriptions.find(x=>x.id==='sub-1001');s.status='cancelled';assert.equal(D.activeSubscription(d,s.numberId),null);
+});
+
+test('عكس القيد المالي يحافظ على الأصل ويوازن الأثر ويمنع العكس المكرر',async()=>{
+  const initial=D.read().financeEntries.reduce((sum,x)=>sum+(x.kind==='revenue'?1:-1)*x.amount,0);
+  await D.addFinancialEntry('admin-demo','revenue',4321,'قيد اختبار للعكس');
+  let d=D.read();const original=d.financeEntries.find(x=>x.description==='قيد اختبار للعكس');
+  const {result}=await D.reverseFinancialEntry('admin-demo',original.id,'تصحيح إدخال خاطئ');d=D.read();
+  const reversal=d.financeEntries.find(x=>x.id===result.entityId);
+  assert.ok(reversal);assert.equal(reversal.sourceType,'reversal');assert.equal(reversal.reversalOf,original.id);assert.equal(reversal.amount,original.amount);assert.notEqual(reversal.kind,original.kind);
+  assert.ok(d.financeEntries.some(x=>x.id===original.id));assert.equal(d.financeEntries.reduce((sum,x)=>sum+(x.kind==='revenue'?1:-1)*x.amount,0),initial);
+  await assert.rejects(()=>D.reverseFinancialEntry('admin-demo',original.id,'عكس مكرر'),/سبق عكس/);
+  await assert.rejects(()=>D.reverseFinancialEntry('admin-demo',reversal.id,'عكس عكسي'),/قيد عكسي/);
+  await assert.rejects(()=>D.reverseFinancialEntry('admin-demo',original.id,'   '),/سبب عكس/);
+});
+
+test('الترحيل من تذكرني القديم يحذف كلمة المرور المخزنة ولا يمس البريد المحفوظ',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const customer=fs.readFileSync(path.join(__dirname,'..','apps','customer.js'),'utf8');
+  const admin=fs.readFileSync(path.join(__dirname,'..','apps','admin.js'),'utf8');
+  assert.match(customer,/Object\.prototype\.hasOwnProperty\.call\(v,'password'\)/);
+  assert.match(admin,/Object\.prototype\.hasOwnProperty\.call\(v,'password'\)/);
+  assert.doesNotMatch(customer,/JSON\.stringify\(\{email,password,enabled:true\}\)/);
+  assert.doesNotMatch(admin,/JSON\.stringify\(\{email,password,enabled:true\}\)/);
+});
+
+test('باقات الحماية مستقلة عن باقات النقاط والاشتراك يسجل عملية مستقلة وخصمًا واحدًا',async()=>{
+  await D.saveProtectionPackage('admin-demo',{id:'protect-30',companyId:'co-net71',name:'حماية 30 يوم',days:30,pointsCost:75,active:true});
+  let d=D.read();assert.equal(d.packages.some(x=>x.id==='protect-30'),false);assert.equal(d.protectionPackages.length,1);
+  const before=D.balance('cus-demo-subscriber');const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-30','subscribe','protection-once');
+  d=D.read();assert.equal(D.balance('cus-demo-subscriber'),before-75);assert.equal(d.protectionOperations.filter(x=>x.id===result.entityId).length,1);assert.equal(d.pointTransactions.filter(x=>x.source==='protection_operation'&&x.sourceId===result.entityId).length,1);
+  const task=d.tasks.find(x=>x.subscriptionId===result.subscriptionId);assert.ok(task);assert.equal(task.status,'due');assert.ok(Math.abs(Date.now()-new Date(task.dueAt).getTime())<5000);
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-30','subscribe','protection-once'),/بالفعل/);
+  assert.equal(D.balance('cus-demo-subscriber'),before-75);
+});
+
+test('تمديد الحماية يحافظ على سجل الاشتراك نفسه ويسجل العملية والخصم بصورة مستقلة',async()=>{
+  await D.saveProtectionPackage('admin-demo',{id:'protect-7',companyId:'co-net77',name:'حماية أسبوع',days:7,pointsCost:25,active:true});
+  const old=D.read().subscriptions.find(x=>x.id==='sub-1001'),oldEnd=old.endsAt,before=D.balance('cus-demo-subscriber');
+  const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1001','protect-7','extend','extend-once');const d=D.read(),updated=d.subscriptions.find(x=>x.id==='sub-1001');
+  assert.equal(d.subscriptions.filter(x=>x.numberId==='num-1001').length,1);assert.equal(updated.endsAt,D.datePlus(oldEnd,7));assert.equal(D.balance('cus-demo-subscriber'),before-25);assert.equal(d.protectionOperations.find(x=>x.id===result.entityId).type,'extend');
+});
+
+test('إعادة جدولة المهمة تتحقق من إعداد الشركة ولا تعيد ضبط سجل التنفيذ',async()=>{
+  const before=D.read().tasks.find(x=>x.id==='task-due-demo').dueAt;const future=new Date(Date.now()+3*86400000).toISOString();
+  await D.rescheduleTask('admin-demo','task-due-demo',future);let d=D.read(),t=d.tasks.find(x=>x.id==='task-due-demo');assert.equal(t.dueAt,future);assert.equal(t.status,'planned');assert.equal(t.executedAt,undefined);assert.equal(d.operations.at(-1).type,'task_rescheduled');
+  await D.transact('admin-demo','disable-reschedule',db=>{db.companies.find(x=>x.id==='co-net77').taskSchedule.allowReschedule=false;return{entityType:'company',entityId:'co-net77',summary:'disable'}});
+  await assert.rejects(()=>D.rescheduleTask('admin-demo','task-due-demo',new Date(Date.now()+4*86400000).toISOString()),/معطلة/);assert.equal(D.read().tasks.find(x=>x.id==='task-due-demo').dueAt,future);assert.notEqual(before,future);
+});
+
+test('واجهة الإدارة تفصل باقات الحماية عن باقات النقاط وتعرض إعدادات المهام الثمانية',()=>{
+  const admin=fs.readFileSync(path.join(__dirname,'..','apps','admin.js'),'utf8');
+  assert.match(admin,/function protectionPackages\(d\)/);assert.match(admin,/data-route="protection-packages"|\['protection-packages'/);
+  for(const field of ['createFirstOnActivation','intervalDays','visibleBeforeDays','expenseAmount','allowReschedule','createAfterExpiry','allowDuringGrace','graceDays'])assert.ok(admin.includes(field),`missing company task setting ${field}`);
+  const customer=fs.readFileSync(path.join(__dirname,'..','apps','customer.js'),'utf8');assert.match(customer,/performProtectionOperation/);assert.match(customer,/تمديد الحماية/);assert.match(customer,/تجديد الحماية/);
+});
+
+test('بيانات الشركة لا تتطلب أسعار الحماية لأن السعر والمدة محفوظان في باقات الحماية المستقلة',async()=>{
+  await D.saveCompany('admin-demo',{name:'شركة بلا تعرفة مدمجة',prefixes:['66'],lengths:[9],intervalDays:4,visibleBeforeDays:2,expenseAmount:900,graceDays:3,createFirstOnActivation:false,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:true,active:true});
+  const c=D.read().companies.find(x=>x.name==='شركة بلا تعرفة مدمجة');assert.ok(c);assert.equal(c.taskSchedule.createFirstOnActivation,false);assert.equal(c.taskSchedule.visibleBeforeDays,2);assert.equal(c.taskSchedule.allowDuringGrace,true);assert.deepEqual(c.durations,[]);
+});
+
+test('التجديد أثناء الحماية السارية يسجل نوعه دون إنشاء اشتراك أو مهمة أولى مكررة',async()=>{
+  await D.saveProtectionPackage('admin-demo',{id:'protect-renew',companyId:'co-net77',name:'تجديد 7 أيام',days:7,pointsCost:20,active:true});
+  const before=D.read(),subCount=before.subscriptions.length,taskCount=before.tasks.length,balance=D.balance('cus-demo-subscriber');
+  const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1001','protect-renew','renew','renew-active');const d=D.read();
+  assert.equal(d.subscriptions.length,subCount);assert.equal(d.tasks.length,taskCount);assert.equal(d.protectionOperations.find(x=>x.id===result.entityId).type,'renew');assert.equal(D.balance('cus-demo-subscriber'),balance-20);
 });

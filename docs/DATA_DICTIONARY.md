@@ -1,6 +1,6 @@
 # قاموس الحقول المحلي
 
-هذا يصف كائنات JavaScript المخزنة في JSON تحت `AMAN_SHARED_REGISTRY_V1`. لا يصف مخطط Supabase المنفذ؛ المقترح الإنتاجي في `SUPABASE_REFERENCE.sql` منفصل.
+هذا يصف كائنات JavaScript المخزنة في JSON تحت `AMAN_SHARED_REGISTRY_V2`. لا يصف مخطط Supabase المنفذ؛ المقترح الإنتاجي في `SUPABASE_REFERENCE.sql` منفصل.
 
 ## اصطلاح الأنواع
 
@@ -103,7 +103,7 @@
 
 ### `admin`, `content`, `idempotencyKeys`
 
-- `admin`: `id/name/email:string`, `darkMode/lockEnabled:boolean`. هو إعداد seed تجريبي؛ `lockEnabled` محفوظ ولكنه ليس قفلًا أمنيًا.
+- `admin`: `id/name/email:string`, `darkMode:boolean`; `lockEnabled` حقل قديم لا يمثل قفلًا فعليًا. هو إعداد seed تجريبي؛ `lockEnabled` محفوظ ولكنه ليس قفلًا أمنيًا.
 - `content`: مفاتيح ثابتة `terms/privacy/contact:string` تحفظها الإدارة عبر `updateContent`.
 - المفتاح: `id:string`, `key:string` فريد محليًا داخل العمليات، `createdAt:ISO string`, `entityId:string`. يمنع إعادة نفس مفتاح تأكيد الاشتراك في المخزن؛ في الإنتاج يلزم قيد قاعدة دائم.
 
@@ -112,3 +112,31 @@
 - كل مجموعة لها `id` غير فارغ وفريد؛ كل رقم يشير إلى مالك وشركة؛ كل اشتراك يطابق رقم المالك وشركته؛ كل مهمة تشير إلى اشتراك ورقم قائمين؛ كل طلب ونقاط/إشعار يشير إلى عميل قائم؛ كل قيد مالي موجب؛ لا يسمح برصيد نقاط سالب.
 - `operations` تحوي حدثًا لكل `transact` ناجح؛ فشل validation أو كتابة التخزين لا يعلن نجاحًا ولا يستبدل الحالة المخزنة.
 - أنواع الحقول في هذا النموذج تمثيل JavaScript؛ أنواع SQL وقيود الإنتاج مرئية في `SUPABASE_REFERENCE.sql`.
+
+## حقول باقات الحماية وعملياتها
+
+| الحقل | النوع المتوقع | المعنى |
+|---|---|---|
+| `protectionPackages.id` | نص فريد | معرّف باقة الحماية |
+| `protectionPackages.companyId` | نص مرجعي | الشركة المرتبطة بالباقة |
+| `protectionPackages.name` | نص | اسم العرض |
+| `protectionPackages.days` | عدد صحيح موجب | مدة الحماية بالأيام |
+| `protectionPackages.pointsCost` | عدد صحيح موجب | تكلفة الخدمة بالنقاط |
+| `protectionPackages.active` | منطقي | إتاحة الاستخدام الجديد |
+| `protectionOperations.type` | `subscribe` / `extend` / `renew` | نوع عملية الحماية |
+| `protectionOperations.pointsCost` | عدد صحيح موجب | تكلفة العملية المحفوظة تاريخيًا |
+| `protectionOperations.packageSnapshot` | كائن | اسم الباقة ومدتها وتكلفتها وقت التنفيذ |
+| `protectionOperations.idempotencyKey` | نص اختياري | منع تكرار تأكيد العملية |
+
+## حقول إعدادات المهام للشركة
+
+| الحقل | النوع | المعنى |
+|---|---|---|
+| `createFirstOnActivation` | منطقي | إنشاء مهمة أولى مستحقة فور التفعيل |
+| `intervalDays` | عدد صحيح موجب | الفاصل بعد التنفيذ الناجح |
+| `visibleBeforeDays` | عدد صحيح غير سالب | نافذة إظهار المهمة قبل الاستحقاق |
+| `expenseAmount` | مبلغ موجب | المصروف المالي عند التنفيذ |
+| `allowReschedule` | منطقي | السماح بإعادة الجدولة |
+| `createAfterExpiry` | منطقي | السماح بإنشاء مهام بعد انتهاء الاشتراك |
+| `allowDuringGrace` | منطقي | السماح بالتنفيذ خلال فترة السماح |
+| `graceDays` | عدد صحيح غير سالب | مدة فترة السماح |

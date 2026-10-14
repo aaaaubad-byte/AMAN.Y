@@ -2,7 +2,7 @@
 
 ## جذر المخزن
 
-المفتاح الوحيد: `AMAN_SHARED_REGISTRY_V1`. قيمة المفتاح كائن JSON ذو `schemaVersion`, `revision`, `updatedAt` ومجموعات مترابطة. كل المعرّفات المحلية نصوص ثابتة بعد الإنشاء (UUID-like/معرّف seed)، والتعديل يحافظ على `id`. بيانات seed مصطنعة.
+المفتاح الوحيد: `AMAN_SHARED_REGISTRY_V2`. قيمة المفتاح كائن JSON ذو `schemaVersion`, `revision`, `updatedAt` ومجموعات مترابطة. كل المعرّفات المحلية نصوص ثابتة بعد الإنشاء (UUID-like/معرّف seed)، والتعديل يحافظ على `id`. بيانات seed مصطنعة.
 
 | المجموعة | المعرّف الأساسي | الحقول المهمة | العلاقات والقيود |
 |---|---|---|---|
@@ -15,11 +15,11 @@
 | `subscriptions` | `id` | `customerId`, `numberId`, `companyId`, `status`, `startsAt`, `endsAt`, `days`, `addedDays`, `rateSnapshot`, `pointsCost`, `previousSubscriptionId`, `createdAt` | `numberId → numbers`; المالك والشركة متطابقان. `rateSnapshot` لا يتغير عند تحديث company. سجل الفترة السابقة لا يستبدل. |
 | `pointTransactions` | `id` | `customerId`, `type=credit/debit`, `points`, `source`, `sourceId`, `createdAt`, `description` | `customerId → customers`; الرصيد يشتق منها ولا يعدّل يدويًا. قيمة غير سالبة؛ رصيد لا يقل عن صفر. مصدر المعاملة يربط طلب الشراء أو الاشتراك. |
 | `tasks` | `id` | `subscriptionId`, `numberId`, `customerId`, `companyId`, `dueAt`, `status`, `expenseAmount`, `executedAt`, `financeEntryId`, `previousTaskId` | روابط subscription/number/customer/company. الحالات planned/due/executed/cancelled. قيد مالي واحد فقط عند التنفيذ. |
-| `financeEntries` | `id` | `kind=revenue/expense`, `amount`, `currency`, `sourceType`, `sourceId`, `customerId?`, `description`, `createdAt` | القيمة موجبة؛ قيد شراء مربوط بالطلب، وقيد مصروف مربوط بالمهمة. القيد اليدوي لا يلمس النقاط. منع التكرار بحسب `sourceType+sourceId` داخل منطق الخدمة. |
+| `financeEntries` | `id` | `kind=revenue/expense`, `amount`, `currency`, `sourceType`, `sourceId`, `reversalOf?`, `reversedBy?`, `customerId?`, `description`, `createdAt` | القيمة موجبة؛ قيد شراء مربوط بالطلب، وقيد مصروف مربوط بالمهمة. القيد اليدوي لا يلمس النقاط. منع التكرار بحسب المصدر للقيود الآلية، وقيد عكسي واحد فقط لكل قيد أصلي. لا يحذف العكس القيد الأصلي. |
 | `operations` | `id` | `actorId`, `type`, `entityType`, `entityId`, `result`, `createdAt`, `summary` | سجل تدقيق مبسط، لا يخزن كلمات مرور أو تفاصيل إثبات حساسة. |
 | `notifications` | `id` | `customerId`, `title`, `body`, `status`, `createdAt`, `readAt` | `customerId → customers.id`; محلية فقط. القراءة تخص العميل نفسه. |
 | `notificationSettings` | مفتاح لكل نوع | `purchaseStatus`, `taskUpdates`, `subscriptionExpiring` | إعدادات نظام منفصلة عن إشعارات المسؤول. الثالثة لا تعمل خلفيًا في هذا النموذج. |
-| `admin` | `id` | `name`, `email`, `darkMode`, `lockEnabled` | مسؤول seed واحد محليًا؛ لا تمثل مصادقة أو صلاحيات آمنة. |
+| `admin` | `id` | `name`, `email`, `darkMode` (قد يبقى `lockEnabled` في بيانات قديمة ولا يمثل ميزة فعالة) | مسؤول seed واحد محليًا؛ لا تمثل مصادقة أو صلاحيات آمنة. |
 | `content` | `terms/privacy/contact` | نصوص | مدخلات إدارية محلية. |
 | `idempotencyKeys` | `id` + `key` فريد | `createdAt`, `entityId` | تمنع تنفيذ نفس تأكيد الاشتراك أكثر من مرة في النموذج. في الإنتاج يلزم قيد unique دائم في قاعدة البيانات. |
 
@@ -42,6 +42,10 @@ packages/paymentMethods تُربط بالطلب مع لقطة تاريخية
 
 في بيانات الاختبار: المشترك `cus-demo-subscriber` لديه رصيد افتتاحي 500، واعتمادات مشتريات 300، واستخدامات اشتراك 270؛ الصافي 530. العميل منخفض الرصيد لديه 10 نقاط. العميل الجديد لديه صفر. لا تعتبر المبالغ المالية جزءًا من هذه المعادلة.
 
+## النسخ الاحتياطي
+
+توفر شاشة الحساب الإداري تنزيل JSON للمخزن الحالي. الملف قد يحتوي بيانات العملاء وهاشات كلمات مرور محلية، لذا يجب حفظه في مكان خاص. لا يوجد استيراد تلقائي في هذه النسخة؛ لا تغيّر مفتاح المخزن ولا تمسح بيانات الموقع قبل تصدير النسخة والتحقق منها.
+
 ## الترحيل
 
 المخطط المنطقي المحلي `schemaVersion=2`. عند قراءة البيانات القديمة المعروفة تُملأ معرفات/حقول ناقصة وتحوّل أرصدة العميل القديمة إلى قيود افتتاحية؛ لا يُستبدل JSON تالف آليًا. يعاد seed فقط بقرار صريح من المستخدم. الترحيل ليس بديلًا عن تصدير نسخة احتياطية قبل نقل بيانات فعلية.
@@ -53,3 +57,27 @@ packages/paymentMethods تُربط بالطلب مع لقطة تاريخية
 - `UNIQUE(point_transactions.source_type, point_transactions.source_id, point_transactions.type)` حيث يسمح المصدر بذلك، و`UNIQUE(finance_entries.source_type, finance_entries.source_id, finance_entries.kind)` للقيود الآلية.
 - قيود CHECK للأرقام والمبالغ الموجبة والحالات، ومفاتيح أجنبية `ON DELETE RESTRICT` للسجلات المالية والتدقيقية.
 - سياسة حذف/احتفاظ مؤرخة وموافق عليها؛ لا تحذف تاريخ العمليات بالاعتماد على cascade.
+
+## الكيانات المستقلة المضافة للمعاينة
+
+### `protectionPackages` — باقات الحماية
+
+- `id`: معرّف الباقة.
+- `companyId`: الشركة المالكة للباقة.
+- `name`: الاسم الظاهر للعميل.
+- `days`: مدة الحماية بالأيام.
+- `pointsCost`: التكلفة بالنقاط الداخلية.
+- `active`: إتاحة الباقة لعمليات جديدة.
+
+هذه المجموعة مستقلة عن `packages` التي تمثل باقات شراء النقاط بسعر مالي وعدد نقاط.
+
+### `protectionOperations` — سجل عمليات الحماية
+
+يسجل كل عملية `subscribe` أو `extend` أو `renew` مع العميل والرقم والشركة والاشتراك المرتبط ولقطة الباقة والتكلفة وتاريخ البداية والنهاية ومفتاح منع التكرار عند استخدامه. حركة الخصم في `pointTransactions` ترتبط بمعرّف العملية، فلا يعتمد السجل التاريخي على السعر الحالي للباقة.
+
+### إعدادات الشركة `taskSchedule`
+
+تتضمن `createFirstOnActivation`, `intervalDays`, `visibleBeforeDays`, `expenseAmount`, `allowReschedule`, `createAfterExpiry`, `allowDuringGrace`, و`graceDays`. تستخدم واجهة الإدارة هذه الحقول، ويستخدمها محرك المعاينة عند إنشاء المهام وإعادة جدولتها وتنفيذها.
+
+
+> ملاحظة توافق: الحقول القديمة `companies.dailyRate` و`companies.durations` تبقى فقط للتوافق مع بيانات المعاينة السابقة واختبارات المسار القديم. واجهة العميل الجديدة لا تستخدمها لتسعير الحماية؛ مصدر مدة الحماية وتكلفتها هو `protectionPackages`.

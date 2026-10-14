@@ -18,13 +18,27 @@ create table public.customer_profiles (
 
 create table public.admin_roles (
   user_id uuid primary key references auth.users(id) on delete restrict,
-  role text not null check (role in ('admin','finance','operations','support')),
+  role text not null default 'admin' check (role = 'admin'),
   created_at timestamptz not null default now()
 );
 
+-- Create a customer profile for each newly registered Auth user; role is never taken from client metadata.
+create or replace function public.handle_new_aman_user()
+returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  insert into public.customer_profiles(user_id,display_name)
+  values(new.id,coalesce(nullif(trim(new.raw_user_meta_data->>'display_name'),''),nullif(split_part(new.email,'@',1),''),'عميل جديد'))
+  on conflict(user_id) do nothing;
+  return new;
+end; $$;
+
+drop trigger if exists on_auth_user_created_aman on auth.users;
+create trigger on_auth_user_created_aman after insert on auth.users
+for each row execute function public.handle_new_aman_user();
+
 create or replace function public.is_aman_admin()
 returns boolean language sql stable security definer set search_path=public,pg_temp as $$
-  select exists(select 1 from public.admin_roles r where r.user_id=auth.uid() and r.role in ('admin','finance','operations','support'));
+  select exists(select 1 from public.admin_roles r where r.user_id=auth.uid() and r.role = 'admin');
 $$;
 
 create table public.companies (
@@ -152,13 +166,16 @@ create table public.finance_entries (
   currency char(3) not null default 'YER',
   source_type text not null check (source_type in ('purchase','task','manual','reversal')),
   source_id uuid,
+  reversal_of_entry_id uuid references public.finance_entries(id) on delete restrict,
   customer_id uuid references public.customer_profiles(user_id) on delete restrict,
   description text not null,
   created_by uuid references auth.users(id) on delete restrict,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check ((source_type='reversal' and reversal_of_entry_id is not null) or (source_type<>'reversal' and reversal_of_entry_id is null))
 );
 create unique index finance_source_once_idx on public.finance_entries(source_type,source_id,kind) where source_id is not null and source_type in ('purchase','task');
 create index finance_created_idx on public.finance_entries(created_at desc);
+create unique index finance_one_reversal_per_entry_idx on public.finance_entries(reversal_of_entry_id) where reversal_of_entry_id is not null;
 
 create table public.customer_notifications (
   id uuid primary key default gen_random_uuid(),
@@ -177,6 +194,10 @@ create table public.admin_notification_settings (
   updated_by uuid references auth.users(id) on delete restrict,
   updated_at timestamptz not null default now()
 );
+
+insert into public.admin_notification_settings(kind,enabled) values
+  ('purchase_status',true),('task_updates',true),('subscription_expiring',true)
+on conflict(kind) do nothing;
 
 create table public.system_content (
   key text primary key check (key in ('terms','privacy','contact')),
@@ -227,6 +248,7 @@ alter table public.idempotency_keys enable row level security;
 alter table public.audit_events enable row level security;
 
 create policy profiles_read_self_or_admin on public.customer_profiles for select to authenticated using (user_id=auth.uid() or public.is_aman_admin());
+create policy admin_role_read_self_or_admin on public.admin_roles for select to authenticated using (user_id=auth.uid() or public.is_aman_admin());
 create policy companies_read_active on public.companies for select to authenticated using (is_active or public.is_aman_admin());
 create policy companies_admin_all on public.companies for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
 create policy packages_read_available on public.points_packages for select to authenticated using (is_available or public.is_aman_admin());
@@ -236,15 +258,109 @@ create policy payment_methods_admin_all on public.payment_methods for all to aut
 create policy numbers_read_owner_or_admin on public.customer_numbers for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
 create policy requests_read_owner_or_admin on public.purchase_requests for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
 create policy subscriptions_read_owner_or_admin on public.subscriptions for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
-create policy points_read_owner_or_finance on public.point_transactions for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
-create policy tasks_read_owner_or_operations on public.tasks for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
+create policy points_read_owner_or_admin on public.point_transactions for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
+create policy tasks_read_owner_or_admin on public.tasks for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
 create policy finance_admin_read on public.finance_entries for select to authenticated using (public.is_aman_admin());
 create policy notices_read_owner_or_admin on public.customer_notifications for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
-create policy notice_read_update_self on public.customer_notifications for update to authenticated using (customer_id=auth.uid()) with check (customer_id=auth.uid());
 create policy settings_admin_only on public.admin_notification_settings for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
 create policy content_read on public.system_content for select to authenticated using (true);
 create policy content_admin_update on public.system_content for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
 create policy audit_admin_read on public.audit_events for select to authenticated using (public.is_aman_admin());
+
+-- Customer-owned number registration: company is inferred from the longest active prefix.
+create or replace function public.add_customer_number(p_number text)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare digits text; co public.companies%rowtype; new_id uuid;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  digits := regexp_replace(translate(coalesce(p_number,''),'٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹','01234567890123456789'),'[^0-9]','','g');
+  if digits = '' then raise exception 'invalid_number'; end if;
+  select c.* into co from public.companies c
+   where c.is_active and exists(select 1 from unnest(c.prefixes) p where digits like p || '%')
+   order by (select max(length(p)) from unnest(c.prefixes) p where digits like p || '%') desc
+   limit 1;
+  if not found then raise exception 'company_prefix_not_found'; end if;
+  if not (char_length(digits) = any(co.number_lengths)) then raise exception 'invalid_number_length'; end if;
+  insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
+   values(auth.uid(),co.id,digits) returning id into new_id;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'number_added','customer_number',new_id,'success','إضافة رقم للعميل دون إنشاء اشتراك');
+  return new_id;
+exception when unique_violation then raise exception 'number_already_registered';
+end; $$;
+
+-- Manager adds a number for a selected customer; no subscription or points are created.
+create or replace function public.admin_add_customer_number(p_customer_id uuid,p_number text)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare digits text; co public.companies%rowtype; new_id uuid;
+begin
+  if not public.is_aman_admin() then raise exception 'admin_required'; end if;
+  if not exists(select 1 from public.customer_profiles where user_id=p_customer_id) then raise exception 'customer_not_found'; end if;
+  digits := regexp_replace(translate(coalesce(p_number,''),'٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹','01234567890123456789'),'[^0-9]','','g');
+  if digits = '' then raise exception 'invalid_number'; end if;
+  select c.* into co from public.companies c
+   where c.is_active and exists(select 1 from unnest(c.prefixes) p where digits like p || '%')
+   order by (select max(length(p)) from unnest(c.prefixes) p where digits like p || '%') desc
+   limit 1;
+  if not found then raise exception 'company_prefix_not_found'; end if;
+  if not (char_length(digits) = any(co.number_lengths)) then raise exception 'invalid_number_length'; end if;
+  insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
+   values(p_customer_id,co.id,digits) returning id into new_id;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'admin_number_added','customer_number',new_id,'success','إضافة رقم للعميل من الإدارة دون إنشاء اشتراك');
+  return new_id;
+exception when unique_violation then raise exception 'number_already_registered';
+end; $$;
+
+-- Purchase creation stores immutable package/payment snapshots; no points or income until admin approval.
+create or replace function public.create_points_purchase(p_package_id uuid,p_payment_method_id uuid,p_payment_reference text)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare p public.points_packages%rowtype; m public.payment_methods%rowtype; new_id uuid; ref text;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  ref := nullif(trim(p_payment_reference),'');
+  if ref is null then raise exception 'payment_reference_required'; end if;
+  select * into p from public.points_packages where id=p_package_id and is_available;
+  if not found then raise exception 'package_unavailable'; end if;
+  select * into m from public.payment_methods where id=p_payment_method_id and is_available;
+  if not found then raise exception 'payment_method_unavailable'; end if;
+  insert into public.purchase_requests(customer_id,package_id,package_snapshot,payment_method_id,payment_method_snapshot,payment_reference)
+  values(auth.uid(),p.id,jsonb_build_object('name',p.name,'points',p.points,'price',p.price_amount,'currency',p.currency),m.id,jsonb_build_object('name',m.name,'summary',m.summary,'instructions',m.instructions),ref)
+  returning id into new_id;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'purchase_requested','purchase_request',new_id,'success','إنشاء طلب شراء نقاط معلق');
+  return new_id;
+exception when unique_violation then raise exception 'payment_reference_already_used';
+end; $$;
+
+-- A customer may mark only their own notification as read; they cannot edit its contents.
+create or replace function public.mark_aman_notification_read(p_notification_id uuid)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare updated_id uuid;
+begin
+  if auth.uid() is null then raise exception 'authentication_required'; end if;
+  update public.customer_notifications set read_at=coalesce(read_at,now()),delivery_status=case when delivery_status='delivered' then 'read' else delivery_status end
+   where id=p_notification_id and customer_id=auth.uid() returning id into updated_id;
+  if updated_id is null then raise exception 'notification_not_found'; end if;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'notification_read','customer_notification',updated_id,'success','قراءة إشعار');
+  return updated_id;
+end; $$;
+
+-- Manager-only manual financial entry. It does not touch the point ledger.
+create or replace function public.add_manual_finance_entry(p_kind public.finance_kind,p_amount numeric,p_currency char(3),p_description text)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare new_id uuid; desc_text text;
+begin
+  if not public.is_aman_admin() then raise exception 'admin_required'; end if;
+  desc_text := nullif(trim(p_description),'');
+  if p_amount is null or p_amount <= 0 or desc_text is null then raise exception 'invalid_finance_entry'; end if;
+  insert into public.finance_entries(kind,amount,currency,source_type,source_id,description,created_by)
+   values(p_kind,p_amount,coalesce(nullif(trim(p_currency::text),''),'YER'),'manual',null,desc_text,auth.uid()) returning id into new_id;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'manual_finance_entry_created','finance_entry',new_id,'success','إضافة قيد مالي يدوي');
+  return new_id;
+end; $$;
 
 -- RPC sketch: requests, point ledger, finance and status commit together in one PostgreSQL transaction.
 create or replace function public.review_points_purchase(p_request_id uuid,p_decision public.purchase_status,p_note text default null)
@@ -276,6 +392,7 @@ returns uuid language plpgsql security definer set search_path=public,pg_temp as
 declare n public.customer_numbers%rowtype; co public.companies%rowtype; prev public.subscriptions%rowtype; new_id uuid; bal bigint; cost integer; start_time timestamptz; end_time timestamptz; next_due timestamptz;
 begin
   if auth.uid() is null then raise exception 'authentication_required'; end if;
+  if nullif(trim(p_idempotency_key),'') is null then raise exception 'idempotency_key_required'; end if;
   perform 1 from public.customer_profiles where user_id=auth.uid() for update;
   select * into n from public.customer_numbers where id=p_number_id and customer_id=auth.uid() for update;
   if not found then raise exception 'number_not_owned'; end if;
@@ -324,10 +441,65 @@ begin
   return t.id;
 end; $$;
 
--- Production hardening checklist before deployment:
--- 1. Revoke direct INSERT/UPDATE/DELETE on point_transactions, subscriptions, finance_entries, tasks, and purchase review tables.
--- 2. Grant narrowly scoped EXECUTE on reviewed RPC functions; use Supabase Auth and server-side role claims.
--- 3. Decide whether customer INSERT on purchase_requests is allowed directly or only through an RPC validating snapshots.
--- 4. Add cross-table ownership constraints/triggers, rate-overlap validation, request proof storage policies, and audit retention.
--- 5. Review SECURITY DEFINER ownership/search_path, policies for support vs finance roles, and proof-of-payment privacy.
--- 6. Test concurrent calls, rollback, RLS from anon/customer/admin roles, migrations, backup and restore in a staging project.
+-- Reverse an erroneous financial entry without deleting or overwriting history.
+-- One reversal per original entry; the amount is equal and kind is opposite.
+create or replace function public.reverse_finance_entry(p_entry_id uuid,p_reason text)
+returns uuid language plpgsql security definer set search_path=public,pg_temp as $$
+declare original public.finance_entries%rowtype; new_id uuid; reason_text text;
+begin
+  if not public.is_aman_admin() then raise exception 'admin_required'; end if;
+  reason_text := nullif(trim(p_reason),'');
+  if reason_text is null then raise exception 'reversal_reason_required'; end if;
+  select * into original from public.finance_entries where id=p_entry_id for update;
+  if not found then raise exception 'finance_entry_not_found'; end if;
+  if original.source_type='reversal' or original.reversal_of_entry_id is not null then raise exception 'cannot_reverse_reversal'; end if;
+  insert into public.finance_entries(kind,amount,currency,source_type,source_id,reversal_of_entry_id,customer_id,description,created_by)
+  values(case when original.kind='revenue' then 'expense'::public.finance_kind else 'revenue'::public.finance_kind end,
+         original.amount,original.currency,'reversal',original.id,original.id,original.customer_id,
+         'عكس القيد '||original.id::text||': '||reason_text,auth.uid())
+  returning id into new_id;
+  insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
+   values(auth.uid(),'finance_entry_reversed','finance_entry',new_id,'success','إنشاء قيد عكسي مع الاحتفاظ بالقيد الأصلي');
+  return new_id;
+exception when unique_violation then raise exception 'finance_entry_already_reversed';
+end; $$;
+
+-- Remaining hardening checklist before deployment:
+-- 1. Verify all grants/RPC execution privileges below on the target Supabase version; never put service_role keys in clients.
+-- 2. Add cross-table ownership constraints/triggers and validate company prefix overlaps at the database boundary.
+-- 3. Define private storage policies and retention for any future proof-of-payment files.
+-- 4. Review SECURITY DEFINER ownership/search_path and provision the first admin outside public signup.
+-- 5. Test concurrent calls, rollback, RLS from anon/customer/admin roles, migrations, backup and restore in a staging project.
+
+
+-- Explicit grants and RPC exposure. RLS is not a substitute for SQL privileges.
+grant usage on schema public to authenticated;
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke execute on function public.handle_new_aman_user() from public, anon, authenticated;
+revoke execute on function public.is_aman_admin() from public, anon;
+revoke execute on function public.add_customer_number(text) from public, anon;
+revoke execute on function public.admin_add_customer_number(uuid,text) from public, anon;
+revoke execute on function public.create_points_purchase(uuid,uuid,text) from public, anon;
+revoke execute on function public.add_manual_finance_entry(public.finance_kind,numeric,char,text) from public, anon;
+revoke execute on function public.review_points_purchase(uuid,public.purchase_status,text) from public, anon;
+revoke execute on function public.create_customer_subscription(uuid,integer,text) from public, anon;
+revoke execute on function public.execute_aman_task(uuid) from public, anon;
+revoke execute on function public.mark_aman_notification_read(uuid) from public, anon;
+revoke execute on function public.reverse_finance_entry(uuid,text) from public, anon;
+grant execute on function public.is_aman_admin() to authenticated;
+grant execute on function public.add_customer_number(text) to authenticated;
+grant execute on function public.admin_add_customer_number(uuid,text) to authenticated;
+grant execute on function public.create_points_purchase(uuid,uuid,text) to authenticated;
+grant execute on function public.add_manual_finance_entry(public.finance_kind,numeric,char,text) to authenticated;
+grant execute on function public.review_points_purchase(uuid,public.purchase_status,text) to authenticated;
+grant execute on function public.create_customer_subscription(uuid,integer,text) to authenticated;
+grant execute on function public.execute_aman_task(uuid) to authenticated;
+grant execute on function public.mark_aman_notification_read(uuid) to authenticated;
+grant execute on function public.reverse_finance_entry(uuid,text) to authenticated;
+grant select on public.customer_profiles, public.admin_roles, public.companies, public.points_packages, public.payment_methods,
+  public.customer_numbers, public.purchase_requests, public.subscriptions, public.point_transactions, public.tasks,
+  public.finance_entries, public.customer_notifications, public.admin_notification_settings, public.system_content, public.audit_events
+  to authenticated;
+grant insert,update,delete on public.companies, public.points_packages, public.payment_methods, public.admin_notification_settings, public.system_content to authenticated;
+grant select on public.customer_point_balances to authenticated;
