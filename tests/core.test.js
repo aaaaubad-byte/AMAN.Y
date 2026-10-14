@@ -230,3 +230,14 @@ test('التجديد أثناء الحماية السارية يسجل نوعه 
   const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1001','protect-renew','renew','renew-active');const d=D.read();
   assert.equal(d.subscriptions.length,subCount);assert.equal(d.tasks.length,taskCount);assert.equal(d.protectionOperations.find(x=>x.id===result.entityId).type,'renew');assert.equal(D.balance('cus-demo-subscriber'),balance-20);
 });
+
+test('حد كلمة المرور الأدنى أربع خانات في تسجيل العميل ودخوله وواجهة الإدارة',()=>{
+  const root=path.join(__dirname,'..','apps');
+  const customer=fs.readFileSync(path.join(root,'customer.js'),'utf8');
+  const admin=fs.readFileSync(path.join(root,'admin.js'),'utf8');
+  assert.match(customer,/minlength=\"4\"/);
+  assert.match(customer,/password\.length<4/);
+  assert.match(customer,/كلمة المرور يجب ألا تقل عن 4 خانات/);
+  assert.match(customer,/كلمة المرور \(4 خانات فأكثر\)/);
+  assert.match(admin,/name=\"password\" type=\"password\" minlength=\"4\"/);
+});
