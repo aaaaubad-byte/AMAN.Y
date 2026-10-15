@@ -152,12 +152,12 @@ test('أيقونات الواجهات SVG ولا توجد مكتبات JavaScrip
 
 test('التهيئة الفعلية تبدأ فارغة دون سجلات أو إعدادات تجارية تجريبية',()=>{const d=D.seedData();for(const k of ['customers','companies','packages','paymentMethods','purchaseRequests','numbers','subscriptions','pointTransactions','tasks','financeEntries','notifications'])assert.equal(d[k].length,0,k);});
 
-test('حفظ الشركة يقبل الفواصل العربية ويحفظ إعدادات المهام',async()=>{
+test('حفظ الشركة يقبل الفواصل العربية وتُحفظ إعداداتها في نموذج المهام المستقل',async()=>{
   await assert.rejects(()=>D.saveCompany('admin-demo',{name:'شركة متعارضة',prefixes:['77'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true}),/بادئة مطابقة/);
   await assert.rejects(()=>D.saveCompany('admin-demo',{name:'شبكة تجريبية 77',prefixes:['79'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true}),/اسم الشركة مستخدم/);
   await D.saveCompany('admin-demo',{name:'شركة اختبار',prefixes:['79','80'],lengths:['9'],dailyRate:'2',durations:['7','30'],intervalDays:'5',expenseAmount:'1250',active:true});
   const c=D.read().companies.find(x=>x.name==='شركة اختبار');
-  assert.ok(c);assert.deepEqual(c.prefixes,['79','80']);assert.deepEqual(c.lengths,[9]);assert.deepEqual(c.durations,[7,30]);assert.equal(c.taskSchedule.intervalDays,5);assert.equal(c.taskSchedule.expenseAmount,1250);
+  assert.ok(c);assert.deepEqual(c.prefixes,['79','80']);assert.deepEqual(c.lengths,[9]);assert.deepEqual(c.durations,[7,30]);await D.saveTaskSettings('admin-demo',c.id,{intervalDays:5,visibleBeforeDays:0,expenseAmount:1250,graceDays:0,createFirstOnActivation:true,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:false});assert.equal(D.read().companies.find(x=>x.id===c.id).taskSchedule.intervalDays,5);
 });
 
 
@@ -215,20 +215,20 @@ test('إعادة جدولة المهمة تتحقق من إعداد الشركة
 test('واجهة الإدارة تفصل باقات الحماية عن باقات النقاط وتعرض إعدادات المهام الثمانية',()=>{
   const admin=fs.readFileSync(path.join(__dirname,'..','apps','admin.js'),'utf8');
   assert.match(admin,/function protectionPackages\(d\)/);assert.match(admin,/data-route="protection-packages"|\['protection-packages'/);
-  for(const field of ['createFirstOnActivation','intervalDays','visibleBeforeDays','expenseAmount','allowReschedule','createAfterExpiry','allowDuringGrace','graceDays'])assert.ok(admin.includes(field),`missing company task setting ${field}`);
+  for(const field of ['createFirstOnActivation','intervalDays','visibleBeforeDays','expenseAmount','allowReschedule','createAfterExpiry','allowDuringGrace','graceDays'])assert.ok(admin.includes(field),`missing task setting ${field}`);assert.match(admin,/task-settings-form/);assert.match(admin,/D\.saveTaskSettings/);
   const customer=fs.readFileSync(path.join(__dirname,'..','apps','customer.js'),'utf8');assert.match(customer,/performProtectionOperation/);assert.match(customer,/تمديد الحماية/);assert.match(customer,/تجديد الحماية/);
 });
 
 test('بيانات الشركة لا تتطلب أسعار الحماية لأن السعر والمدة محفوظان في باقات الحماية المستقلة',async()=>{
   await D.saveCompany('admin-demo',{name:'شركة بلا تعرفة مدمجة',prefixes:['66'],lengths:[9],intervalDays:4,visibleBeforeDays:2,expenseAmount:900,graceDays:3,createFirstOnActivation:false,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:true,active:true});
-  const c=D.read().companies.find(x=>x.name==='شركة بلا تعرفة مدمجة');assert.ok(c);assert.equal(c.taskSchedule.createFirstOnActivation,false);assert.equal(c.taskSchedule.visibleBeforeDays,2);assert.equal(c.taskSchedule.allowDuringGrace,true);assert.deepEqual(c.durations,[]);
+  const c=D.read().companies.find(x=>x.name==='شركة بلا تعرفة مدمجة');assert.ok(c);assert.deepEqual(c.durations,[]);await D.saveTaskSettings('admin-demo',c.id,{intervalDays:4,visibleBeforeDays:2,expenseAmount:900,graceDays:3,createFirstOnActivation:false,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:true});const updated=D.read().companies.find(x=>x.id===c.id);assert.equal(updated.taskSchedule.createFirstOnActivation,false);assert.equal(updated.taskSchedule.visibleBeforeDays,2);assert.equal(updated.taskSchedule.allowDuringGrace,true);
 });
 
-test('التجديد أثناء الحماية السارية يسجل نوعه دون إنشاء اشتراك أو مهمة أولى مكررة',async()=>{
+test('التجديد منفصل عن التمديد ولا يقبل حماية ما زالت سارية',async()=>{
   await D.saveProtectionPackage('admin-demo',{id:'protect-renew',companyId:'co-net77',name:'تجديد 7 أيام',days:7,pointsCost:20,active:true});
-  const before=D.read(),subCount=before.subscriptions.length,taskCount=before.tasks.length,balance=D.balance('cus-demo-subscriber');
-  const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1001','protect-renew','renew','renew-active');const d=D.read();
-  assert.equal(d.subscriptions.length,subCount);assert.equal(d.tasks.length,taskCount);assert.equal(d.protectionOperations.find(x=>x.id===result.entityId).type,'renew');assert.equal(D.balance('cus-demo-subscriber'),balance-20);
+  const before=D.read(),subCount=before.subscriptions.length,balance=D.balance('cus-demo-subscriber');
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-subscriber','num-1001','protect-renew','renew','renew-active'),/لا تزال سارية/);
+  assert.equal(D.read().subscriptions.length,subCount);assert.equal(D.balance('cus-demo-subscriber'),balance);
 });
 
 test('حد كلمة المرور الأدنى أربع خانات في تسجيل العميل ودخوله وواجهة الإدارة',()=>{
@@ -240,4 +240,35 @@ test('حد كلمة المرور الأدنى أربع خانات في تسجي�
   assert.match(customer,/كلمة المرور يجب ألا تقل عن 4 خانات/);
   assert.match(customer,/كلمة المرور \(4 خانات فأكثر\)/);
   assert.match(admin,/name=\"password\" type=\"password\" minlength=\"4\"/);
+});
+
+
+test('عدد المهام يتبع مدة الباقة والفاصل ويبدأ بالمهمة الفورية عند تفعيلها',async()=>{
+  await D.transact('admin-demo','schedule-test',d=>{const c=d.companies.find(x=>x.id==='co-net71');Object.assign(c.taskSchedule,{intervalDays:7,visibleBeforeDays:2,expenseAmount:1000,createFirstOnActivation:true,createAfterExpiry:false,graceDays:0});return{entityType:'company',entityId:c.id,summary:'تهيئة اختبار الجدول'}});
+  await D.saveProtectionPackage('admin-demo',{id:'protect-180',companyId:'co-net71',name:'اختبار 20',days:20,pointsCost:1,active:true});
+  const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-180','subscribe','schedule-180');
+  const d=D.read(),sub=d.subscriptions.find(x=>x.id===result.subscriptionId),tasks=d.tasks.filter(x=>x.subscriptionId===sub.id).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt));
+  assert.equal(tasks.length,3);assert.equal(tasks[0].dueAt,sub.startsAt);assert.ok(tasks.every(t=>new Date(t.dueAt)<=new Date(sub.endsAt)));assert.equal(tasks[0].visibleAt,sub.startsAt);
+});
+
+test('تغيير مهلة الظهور يتيح التنفيذ عند دخول النافذة قبل تاريخ الاستحقاق',async()=>{
+  const t=D.read().tasks.find(x=>x.id==='task-due-demo');const due=new Date(Date.now()+86400000).toISOString();
+  await D.transact('admin-demo','prepare-visible-task',d=>{const x=d.tasks.find(y=>y.id===t.id);x.dueAt=due;x.visibleAt=new Date(Date.now()-1000).toISOString();x.status='planned';return{entityType:'task',entityId:x.id,summary:'تهيئة اختبار نافذة الظهور'}});
+  await D.rescheduleTask('admin-demo',t.id,due);
+  const updated=D.read().tasks.find(x=>x.id===t.id);assert.ok(new Date(updated.visibleAt)<=new Date());
+  await D.executeTask('admin-demo',t.id);assert.equal(D.read().tasks.find(x=>x.id===t.id).status,'executed');
+});
+
+test('تعديل إعدادات الشركة يعيد بناء المهام المستقبلية ولا يغير المهام المنفذة',async()=>{
+  await D.executeTask('admin-demo','task-due-demo');
+  const executed=D.read().tasks.find(x=>x.id==='task-due-demo'),oldExecutedDate=executed.dueAt;
+  await D.saveTaskSettings('admin-demo','co-net77',{intervalDays:15,visibleBeforeDays:2,expenseAmount:2222,graceDays:10,createFirstOnActivation:true,allowReschedule:true,createAfterExpiry:true,allowDuringGrace:false});
+  const d=D.read();assert.equal(d.tasks.find(x=>x.id===executed.id).dueAt,oldExecutedDate);
+  const future=d.tasks.filter(x=>x.subscriptionId===executed.subscriptionId&&x.status!=='executed'&&x.status!=='cancelled');
+  assert.ok(future.every(x=>x.expenseAmount===2222));assert.ok(future.every(x=>Number.isFinite(new Date(x.visibleAt).getTime())));
+});
+
+test('واجهة الإدارة تعرض إعدادات المهام في شاشة منفصلة وخطة الرقم في التفاصيل',()=>{
+  const admin=fs.readFileSync(path.join(__dirname,'..','apps','admin.js'),'utf8');
+  assert.match(admin,/task-settings-form/);assert.match(admin,/مخطط المهام/);assert.match(admin,/visibleAt\|\|t\.dueAt/);
 });

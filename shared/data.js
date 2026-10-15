@@ -11,6 +11,23 @@
   const uid = prefix => `${prefix}_${(globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2,10)}`).replaceAll('-', '')}`;
   const now = () => new Date().toISOString();
   const datePlus = (base, days) => new Date(new Date(base).getTime() + days * 86400000).toISOString();
+  function regenerateTaskPlan(db, sub, cfg) {
+    const interval=Number(cfg.intervalDays),visibleDays=Number(cfg.visibleBeforeDays||0),expense=Number(cfg.expenseAmount);
+    if(!Number.isInteger(interval)||interval<=0||!Number.isInteger(visibleDays)||visibleDays<0||!Number.isFinite(expense)||expense<=0)throw new Error('إعداد جدولة المهام أو قيمتها المالية غير صالحة.');
+    const tailDays=cfg.createAfterExpiry===true?Number(cfg.graceDays||0):0;
+    if(!Number.isInteger(tailDays)||tailDays<0)throw new Error('مهلة إنشاء المهام بعد الانتهاء غير صالحة.');
+    const deadline=new Date(sub.endsAt).getTime()+tailDays*86400000;
+    const executed=db.tasks.filter(t=>t.subscriptionId===sub.id&&t.status==='executed').sort((a,b)=>new Date(a.executedAt||a.dueAt)-new Date(b.executedAt||b.dueAt));
+    const pending=db.tasks.filter(t=>t.subscriptionId===sub.id&&t.status!=='executed'&&t.scheduleManaged!==false).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt));
+    let cursor=executed.length?new Date(datePlus(executed.at(-1).executedAt||executed.at(-1).dueAt,interval)).getTime():new Date(cfg.createFirstOnActivation===false?datePlus(sub.startsAt,interval):sub.startsAt).getTime();
+    const dates=[];for(let i=0;i<10000&&cursor<=deadline;i++,cursor+=interval*86400000)dates.push(new Date(cursor).toISOString());
+    for(let i=0;i<dates.length;i++){
+      const dueAt=dates[i],visibleAt=new Date(Math.max(new Date(sub.startsAt).getTime(),new Date(datePlus(dueAt,-visibleDays)).getTime())).toISOString(),task=pending[i],status=i===0&&new Date(visibleAt).getTime()<=Date.now()?'due':'planned';
+      if(task){Object.assign(task,{dueAt,visibleAt,status,expenseAmount:expense,scheduleManaged:true,scheduleIndex:i});}
+      else db.tasks.push({id:uid('task'),subscriptionId:sub.id,numberId:sub.numberId,customerId:sub.customerId,companyId:sub.companyId,dueAt,visibleAt,status,expenseAmount:expense,createdAt:now(),scheduleManaged:true,scheduleIndex:i});
+    }
+    for(let i=dates.length;i<pending.length;i++)pending[i].status='cancelled';
+  }
   const safeArray = x => Array.isArray(x) ? x : [];
   const digitsOnly = value => String(value||'').replace(/[٠-٩۰-۹]/g,ch=>String(ch.charCodeAt(0)>='۰'.charCodeAt(0)?ch.charCodeAt(0)-'۰'.charCodeAt(0):ch.charCodeAt(0)-'٠'.charCodeAt(0))).replace(/\D/g,'');
   let injectedStorage = null;
@@ -156,8 +173,7 @@
     days=Number(days);
     return transact(customerId,'subscription_activated_or_extended',db=>{
       if(idempotencyKey&&db.idempotencyKeys.some(x=>x.customerId===customerId&&x.key===idempotencyKey))throw new Error('تم تنفيذ هذا التأكيد بالفعل؛ لم يُخصم رصيد إضافي.');
-      const n=ownedNumber(db,customerId,numberId),co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);
-      if(!co)throw new Error('شركة الرقم غير متاحة.');if(!Number.isInteger(days)||!(co.durations||[]).includes(days))throw new Error('مدة الاشتراك غير صالحة وفق مدد الشركة.');
+      const n=ownedNumber(db,customerId,numberId),co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);if(!co)throw new Error('شركة الرقم غير متاحة.');if(!Number.isInteger(days)||!(co.durations||[]).includes(days))throw new Error('مدة الاشتراك غير صالحة وفق مدد الشركة.');
       const rate=Number(co.dailyRate);if(!Number.isFinite(rate)||rate<=0)throw new Error('تعرفة الشركة غير صالحة.');
       const cost=rate*days;if(!Number.isSafeInteger(cost))throw new Error('تكلفة الاشتراك غير صالحة.');
       const old=activeSubscription(db,n.id),remaining=old?Math.max(0,Math.ceil((new Date(old.endsAt)-Date.now())/86400000)):0;
@@ -168,23 +184,42 @@
       db.pointTransactions.push({id:uid('pt'),customerId,type:'debit',points:cost,source:'subscription',sourceId:s.id,createdAt:now(),description:`${old?'تمديد':'تفعيل'} رقم ${n.number} لمدة ${days} يومًا`});
       const schedule=co.taskSchedule||{},interval=Number(schedule.intervalDays),expense=Number(schedule.expenseAmount);
       if(!Number.isInteger(interval)||interval<=0||!Number.isFinite(expense)||expense<=0)throw new Error('إعداد جدولة المهام أو قيمتها المالية غير صالحة؛ لم تحفظ العملية.');
-      const dueAt=datePlus(now(),interval);if(new Date(dueAt)<=new Date(endsAt))db.tasks.push({id:uid('task'),subscriptionId:s.id,numberId:n.id,customerId,companyId:co.id,dueAt,status:'planned',expenseAmount:expense,createdAt:now()});
+      regenerateTaskPlan(db,s,{...schedule,intervalDays:interval,expenseAmount:expense});
       if(idempotencyKey)db.idempotencyKeys.push({id:uid('idem'),customerId,key:idempotencyKey,createdAt:now(),entityId:s.id});
       return {entityType:'subscription',entityId:s.id,summary:`${old?'تمديد':'تفعيل'} ${n.number} بتكلفة ${cost} نقطة`,cost,remainingDays:remaining};
     });
   }
-  async function rescheduleTask(adminId,taskId,newDueAt){const time=new Date(newDueAt);if(!Number.isFinite(time.getTime()))throw new Error('موعد المهمة الجديد غير صالح.');return transact(adminId,'task_rescheduled',db=>{const t=db.tasks.find(x=>x.id===taskId);if(!t)throw new Error('المهمة غير موجودة.');if(!['planned','due'].includes(t.status))throw new Error('لا يمكن إعادة جدولة مهمة منفذة أو ملغاة.');const co=db.companies.find(x=>x.id===t.companyId),cfg=co?.taskSchedule||{};if(cfg.allowReschedule!==true)throw new Error('إعادة الجدولة معطلة في إعدادات الشركة.');if(time.getTime()<=Date.now())throw new Error('اختر موعدًا مستقبليًا.');t.dueAt=time.toISOString();t.visibleAt=datePlus(t.dueAt,-Number(cfg.visibleBeforeDays||0));t.status='planned';t.rescheduledAt=now();return{entityType:'task',entityId:t.id,summary:'إعادة جدولة المهمة دون إعادة ضبط دورة المهام'};});}
+  async function rescheduleTask(adminId,taskId,newDueAt){
+    const time=new Date(newDueAt);if(!Number.isFinite(time.getTime()))throw new Error('موعد المهمة الجديد غير صالح.');
+    return transact(adminId,'task_rescheduled',db=>{
+      const t=db.tasks.find(x=>x.id===taskId);if(!t)throw new Error('المهمة غير موجودة.');
+      if(!['planned','due'].includes(t.status))throw new Error('لا يمكن إعادة جدولة مهمة منفذة أو ملغاة.');
+      const co=db.companies.find(x=>x.id===t.companyId),cfg=co?.taskSchedule||{};
+      if(cfg.allowReschedule!==true)throw new Error('إعادة الجدولة معطلة في إعدادات الشركة.');
+      if(time.getTime()<=Date.now())throw new Error('اختر موعدًا مستقبليًا.');
+      const previousDue=new Date(t.dueAt).getTime(),deltaDays=Math.floor((time.getTime()+10800000)/86400000)-Math.floor((previousDue+10800000)/86400000),sub=db.subscriptions.find(x=>x.id===t.subscriptionId);
+      t.dueAt=time.toISOString();t.visibleAt=datePlus(t.dueAt,-Number(cfg.visibleBeforeDays||0));t.status='planned';t.rescheduledAt=now();t.manualReschedule=true;
+      if(sub){
+        const later=db.tasks.filter(x=>x.subscriptionId===sub.id&&x.status!=='executed'&&x.status!=='cancelled'&&x.id!==t.id&&new Date(x.dueAt)>previousDue).sort((x,y)=>new Date(x.dueAt)-new Date(y.dueAt));
+        for(const x of later){x.dueAt=datePlus(x.dueAt,deltaDays);x.visibleAt=datePlus(x.dueAt,-Number(cfg.visibleBeforeDays||0));x.status='planned';x.manualReschedule=true;}
+        const deadline=new Date(sub.endsAt).getTime()+(cfg.createAfterExpiry===true?Number(cfg.graceDays||0)*86400000:0);
+        for(const x of db.tasks.filter(x=>x.subscriptionId===sub.id&&x.status!=='executed'&&x.status!=='cancelled'))if(new Date(x.dueAt).getTime()>deadline)x.status='cancelled';
+      }
+      return{entityType:'task',entityId:t.id,summary:'إعادة جدولة المهمة وتحديث بقية المخطط'};
+    });
+  }
+
   async function executeTask(adminId, taskId) {
     return transact(adminId,'task_executed',db=>{
       const t=db.tasks.find(x=>x.id===taskId);if(!t)throw new Error('المهمة غير موجودة.');if(t.status==='executed')throw new Error('سبق تنفيذ هذه المهمة.');
-      if(t.status==='cancelled')throw new Error('لا يمكن تنفيذ مهمة ملغاة.');if(new Date(t.dueAt)>Date.now())throw new Error('لم يحِن موعد المهمة بعد.');
-      const c=db.companies.find(x=>x.id===t.companyId),cfg=c?.taskSchedule||{},interval=Number(cfg.intervalDays);if(!Number.isInteger(interval)||interval<=0)throw new Error('إعداد الجدولة غير صالح.');if(new Date(t.dueAt)>Date.now())throw new Error('لم يحِن موعد المهمة بعد.');const subCheck=db.subscriptions.find(s=>s.id===t.subscriptionId);if(subCheck&&new Date(subCheck.endsAt)<=Date.now()){const graceEnd=new Date(new Date(subCheck.endsAt).getTime()+Number(cfg.graceDays||0)*86400000);if(cfg.allowDuringGrace!==true||Date.now()>graceEnd)throw new Error('انتهت الحماية ولا تسمح إعدادات الشركة بتنفيذ المهمة الآن.');}
+      if(t.status==='cancelled')throw new Error('لا يمكن تنفيذ مهمة ملغاة.');if(new Date(t.visibleAt||t.dueAt)>Date.now())throw new Error('لم تدخل المهمة نافذة الظهور بعد.');const queued=db.tasks.filter(x=>x.subscriptionId===t.subscriptionId&&['due','planned'].includes(x.status)).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt));if(queued[0]?.id!==t.id)throw new Error('نفّذ المهمة الحالية في ترتيب الخطة أولًا.');
+      const c=db.companies.find(x=>x.id===t.companyId),cfg=c?.taskSchedule||{},interval=Number(cfg.intervalDays);if(!Number.isInteger(interval)||interval<=0)throw new Error('إعداد الجدولة غير صالح.');const subCheck=db.subscriptions.find(s=>s.id===t.subscriptionId);if(subCheck&&new Date(subCheck.endsAt)<=Date.now()){const graceEnd=new Date(new Date(subCheck.endsAt).getTime()+Number(cfg.graceDays||0)*86400000);if(cfg.allowDuringGrace!==true||Date.now()>graceEnd)throw new Error('انتهت الحماية ولا تسمح إعدادات الشركة بتنفيذ المهمة الآن.');}
       t.status='executed';t.executedAt=now();
       const fin={id:uid('fin'),kind:'expense',amount:Number(t.expenseAmount),currency:'YER',sourceType:'task',sourceId:t.id,customerId:t.customerId,description:`مصروف تنفيذ مهمة ${t.id}`,createdAt:now()};
       if(db.financeEntries.some(f=>f.sourceType==='task'&&f.sourceId===t.id))throw new Error('المصروف مسجل مسبقًا لهذه المهمة.');db.financeEntries.push(fin);t.financeEntryId=fin.id;
       if(db.notificationSettings?.taskUpdates)db.notifications.unshift({id:uid('notice'),customerId:t.customerId,numberId:t.numberId,title:'تم تحديث مهمة رقمك',body:`نُفذت المهمة ${t.id} للرقم ${db.numbers.find(n=>n.id===t.numberId)?.number||''} محليًا.`,status:'delivered-local',createdAt:now(),readAt:null});
       const sub=db.subscriptions.find(s=>s.id===t.subscriptionId);
-      const nextDue=sub?datePlus(t.executedAt,interval):null;const canAfterExpiry=cfg.createAfterExpiry===true;if(sub&&(canAfterExpiry||new Date(sub.endsAt)>Date.now())&&(canAfterExpiry||new Date(nextDue)<=new Date(sub.endsAt))){const duplicate=db.tasks.some(x=>x.subscriptionId===sub.id&&['planned','due'].includes(x.status)&&Math.abs(new Date(x.dueAt)-new Date(nextDue))<1000);if(!duplicate)db.tasks.push({id:uid('task'),subscriptionId:sub.id,numberId:t.numberId,customerId:t.customerId,companyId:t.companyId,dueAt:nextDue,visibleAt:datePlus(nextDue,-Number(cfg.visibleBeforeDays||0)),status:new Date(nextDue)<=Date.now()?'due':'planned',expenseAmount:Number(cfg.expenseAmount),createdAt:now(),previousTaskId:t.id});}
+      if(sub)regenerateTaskPlan(db,sub,cfg);
       return {entityType:'task',entityId:t.id,summary:`تنفيذ مهمة ${t.id} وتسجيل مصروف مرة واحدة`};
     });
   }
@@ -208,42 +243,45 @@
   }
 
   async function saveCompany(adminId, input) {
-    return transact(adminId,'company_saved',db=>{const prior=db.companies.find(x=>x.id===input.id),oldSchedule=prior?.taskSchedule||{};const c={...input,id:input.id||uid('co'),name:String(input.name||'').trim(),prefixes:[...new Set((input.prefixes||[]).map(digitsOnly).filter(Boolean))],lengths:[...new Set((input.lengths||[]).map(Number))],dailyRate:Number(input.dailyRate??prior?.dailyRate??1),durations:[...new Set((input.durations??prior?.durations??[]).map(Number))],taskSchedule:{createFirstOnActivation:input.createFirstOnActivation===undefined?(oldSchedule.createFirstOnActivation!==false):input.createFirstOnActivation===true,intervalDays:Number(input.intervalDays),visibleBeforeDays:Number(input.visibleBeforeDays??oldSchedule.visibleBeforeDays??1),expenseAmount:Number(input.expenseAmount),allowReschedule:input.allowReschedule===undefined?(oldSchedule.allowReschedule!==false):input.allowReschedule===true,createAfterExpiry:input.createAfterExpiry===true,allowDuringGrace:input.allowDuringGrace===true,graceDays:Number(input.graceDays??0),unit:'YER'},active:input.active!==false};if(!c.name||!c.prefixes.length||!c.lengths.length||!c.lengths.every(x=>Number.isInteger(x)&&x>0)||!Number.isInteger(c.dailyRate)||c.dailyRate<=0||!c.durations.every(x=>Number.isInteger(x)&&x>0)||!Number.isInteger(c.taskSchedule.intervalDays)||c.taskSchedule.intervalDays<=0||!Number.isInteger(c.taskSchedule.visibleBeforeDays)||c.taskSchedule.visibleBeforeDays<0||!Number.isFinite(c.taskSchedule.expenseAmount)||c.taskSchedule.expenseAmount<=0||!Number.isInteger(c.taskSchedule.graceDays)||c.taskSchedule.graceDays<0)throw new Error('بيانات الشركة أو التعرفة أو إعدادات المهام غير مكتملة.');for(const other of db.companies)if(other.id!==c.id&&String(other.name||'').trim().toLocaleLowerCase()===c.name.toLocaleLowerCase())throw new Error('اسم الشركة مستخدم بالفعل.');if(c.active)for(const other of db.companies)if(other.id!==c.id&&other.active!==false&&(other.prefixes||[]).some(p=>c.prefixes.includes(digitsOnly(p))))throw new Error('توجد شركة فعالة تستخدم بادئة مطابقة بالفعل. لا يمكن توزيع البادئة نفسها على شركتين.');const i=db.companies.findIndex(x=>x.id===c.id);if(i<0)db.companies.push(c);else db.companies[i]=c;return {entityType:'company',entityId:c.id,summary:`حفظ الشركة ${c.name}`};});
+    return transact(adminId,'company_saved',db=>{const prior=db.companies.find(x=>x.id===input.id),oldSchedule=prior?.taskSchedule||{};const c={...input,id:input.id||uid('co'),name:String(input.name||'').trim(),prefixes:[...new Set((input.prefixes||[]).map(digitsOnly).filter(Boolean))],lengths:[...new Set((input.lengths||[]).map(Number))],dailyRate:Number(input.dailyRate??prior?.dailyRate??1),durations:[...new Set((input.durations??prior?.durations??[]).map(Number))],taskSchedule:prior?oldSchedule:undefined,active:input.active!==false};if(!c.name||!c.prefixes.length||!c.lengths.length||!c.lengths.every(x=>Number.isInteger(x)&&x>0)||!Number.isInteger(c.dailyRate)||c.dailyRate<=0||!c.durations.every(x=>Number.isInteger(x)&&x>0))throw new Error('بيانات الشركة أو التعرفة أو إعدادات المهام غير مكتملة.');for(const other of db.companies)if(other.id!==c.id&&String(other.name||'').trim().toLocaleLowerCase()===c.name.toLocaleLowerCase())throw new Error('اسم الشركة مستخدم بالفعل.');if(c.active)for(const other of db.companies)if(other.id!==c.id&&other.active!==false&&(other.prefixes||[]).some(p=>c.prefixes.includes(digitsOnly(p))))throw new Error('توجد شركة فعالة تستخدم بادئة مطابقة بالفعل. لا يمكن توزيع البادئة نفسها على شركتين.');const i=db.companies.findIndex(x=>x.id===c.id);if(i<0)db.companies.push(c);else db.companies[i]=c;return {entityType:'company',entityId:c.id,summary:`حفظ الشركة ${c.name} وتحديث المهام غير المنفذة`};});
+  }
+  async function saveTaskSettings(adminId,companyId,input){
+    return transact(adminId,'task_settings_saved',db=>{
+      const c=db.companies.find(x=>x.id===companyId);if(!c)throw new Error('الشركة المحددة غير موجودة.');
+      const prior=c.taskSchedule||{},cfg={createFirstOnActivation:input.createFirstOnActivation===true,intervalDays:Number(input.intervalDays),visibleBeforeDays:Number(input.visibleBeforeDays),expenseAmount:Number(input.expenseAmount),allowReschedule:input.allowReschedule===true,createAfterExpiry:input.createAfterExpiry===true,allowDuringGrace:input.allowDuringGrace===true,graceDays:Number(input.graceDays),unit:prior.unit||'YER'};
+      if(!Number.isInteger(cfg.intervalDays)||cfg.intervalDays<1||!Number.isInteger(cfg.visibleBeforeDays)||cfg.visibleBeforeDays<0||!Number.isFinite(cfg.expenseAmount)||cfg.expenseAmount<=0||!Number.isInteger(cfg.graceDays)||cfg.graceDays<0)throw new Error('تحقق من إعدادات المهام: الفاصل والمصروف ومدة السماح مطلوبة.');
+      c.taskSchedule=cfg;for(const sub of db.subscriptions.filter(x=>x.companyId===c.id&&x.status==='active'))regenerateTaskPlan(db,sub,cfg);
+      return{entityType:'task_settings',entityId:c.id,summary:`حفظ إعدادات المهام لشركة ${c.name}`};
+    });
   }
   async function saveProtectionPackage(adminId,input){return transact(adminId,'protection_package_saved',db=>{const p={id:input.id||uid('protpkg'),companyId:String(input.companyId||''),name:String(input.name||'').trim(),days:Number(input.days),pointsCost:Number(input.pointsCost),active:input.active!==false};if(!p.name||!db.companies.some(c=>c.id===p.companyId)||!Number.isInteger(p.days)||p.days<=0||!Number.isInteger(p.pointsCost)||p.pointsCost<=0)throw new Error('اسم باقة الحماية والشركة والمدة والتكلفة بالنقاط حقول مطلوبة وصحيحة.');const i=db.protectionPackages.findIndex(x=>x.id===p.id);if(i<0)db.protectionPackages.push(p);else db.protectionPackages[i]=p;return{entityType:'protection_package',entityId:p.id,summary:`حفظ باقة الحماية ${p.name}`};});}
   async function performProtectionOperation(customerId,numberId,packageId,operationType,idempotencyKey=''){
     if(!['subscribe','extend','renew'].includes(operationType))throw new Error('نوع عملية الحماية غير صالح.');
+    if(operationType==='renew'){const snap=read(),n=snap.numbers.find(x=>x.id===numberId||digitsOnly(x.number)===digitsOnly(numberId)),latest=n&&snap.subscriptions.filter(x=>x.numberId===n.id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];if(latest&&new Date(latest.endsAt)<=Date.now()){const next=snap.tasks.filter(t=>t.subscriptionId===latest.id&&['due','planned'].includes(t.status)).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt))[0],deadline=next?new Date(next.dueAt).getTime():new Date(latest.endsAt).getTime();if(Date.now()>deadline){await transact(customerId,'number_restricted_for_late_renewal',db=>{const target=db.numbers.find(x=>x.id===n.id);if(target){target.restricted=true;target.restrictionReason='تجاوز موعد التجديد المسموح المرتبط بالخطة';target.restrictedAt=now();}return{entityType:'number',entityId:n.id,summary:'تقييد الرقم لتجاوز حد التجديد'};});throw new Error('انتهت مهلة التجديد وفق موعد المهمة التالية؛ قُيّد الرقم ويلزم رفع القيد من الإدارة.');}}}
     return transact(customerId,`protection_${operationType}`,db=>{
       if(idempotencyKey&&db.idempotencyKeys.some(x=>x.customerId===customerId&&x.key===idempotencyKey))throw new Error('تم تنفيذ هذا التأكيد بالفعل؛ لم يُخصم رصيد إضافي.');
-      const n=ownedNumber(db,customerId,numberId),co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);if(!co)throw new Error('شركة الرقم غير متاحة.');
+      let n=db.numbers.find(x=>x.id===numberId||digitsOnly(x.number)===digitsOnly(numberId));if(!n&&/^\d+$/.test(digitsOnly(numberId))&&operationType==='subscribe'){const digits=digitsOnly(numberId),co=companyFor(digits,db);if(!validPhone(digits,co))throw new Error('تعذر تحديد شركة أو طول صالح لهذا الرقم.');n={id:uid('num'),customerId,number:digits,companyId:co.id,addedAt:now(),status:'active'};db.numbers.push(n);}if(!n||(n.customerId!==customerId&&operationType!=='extend'))throw new Error('هذا الإجراء غير متاح لهذا الرقم.');if(n.restricted)throw new Error('الرقم مقيّد؛ راجع الإدارة.');const co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);if(!co)throw new Error('شركة الرقم غير متاحة.');
       const p=db.protectionPackages.find(x=>x.id===packageId&&x.companyId===co.id&&x.active!==false);if(!p)throw new Error('باقة الحماية غير متاحة لهذه الشركة.');
       const current=activeSubscription(db,n.id),latest=db.subscriptions.filter(s=>s.numberId===n.id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0],continuesCurrent=operationType==='extend'||(operationType==='renew'&&!!current);
       if(operationType==='subscribe'&&current)throw new Error('يوجد اشتراك حماية سارٍ؛ استخدم التمديد أو التجديد.');
-      if(operationType==='extend'&&!current)throw new Error('التمديد متاح للاشتراك الساري فقط؛ استخدم التجديد أو الاشتراك.');
+      if(operationType==='extend'&&!current)throw new Error('التمديد متاح للاشتراك الساري فقط؛ استخدم التجديد أو الاشتراك.');if(operationType==='renew'&&current)throw new Error('الحماية لا تزال سارية؛ استخدم التمديد بدل التجديد.');
       if(operationType==='renew'&&!latest)throw new Error('لا يوجد اشتراك سابق لتجديده؛ استخدم الاشتراك الجديد.');
-      const cost=Number(p.pointsCost),days=Number(p.days);if(balanceFrom(db,customerId)<cost)throw new Error('رصيد أمان غير كافٍ؛ لم يتم خصم نقاط أو تغيير الحماية.');
+      const cost=Number(p.pointsCost),packageDays=Number(p.days);let days=packageDays;if(balanceFrom(db,customerId)<cost)throw new Error('رصيد أمان غير كافٍ؛ لم يتم خصم نقاط أو تغيير الحماية.');
       const stamp=now();let sub,startsAt,endsAt;
       if(continuesCurrent){
         startsAt=current.startsAt;endsAt=datePlus(current.endsAt,days);current.endsAt=endsAt;current.days=Number(current.days||0)+days;current.addedDays=Number(current.addedDays||0)+days;current.updatedAt=stamp;sub=current;
       }else{
         if(operationType==='subscribe'&&current)throw new Error('يوجد اشتراك سارٍ.');
         if(operationType==='subscribe'&&latest&&latest.status==='active'&&new Date(latest.endsAt)>Date.now())throw new Error('يوجد اشتراك سارٍ.');
-        startsAt=operationType==='renew'&&latest&&new Date(latest.endsAt)>Date.now()?latest.endsAt:stamp;
-        if(operationType==='renew'&&latest&&new Date(latest.endsAt)<=Date.now())startsAt=stamp;
-        endsAt=datePlus(startsAt,days);
+        startsAt=stamp;days=packageDays;if(operationType==='renew'&&latest){const end=new Date(latest.endsAt),nowDate=new Date(stamp),elapsed=Math.max(0,Math.floor((nowDate.getTime()+10800000)/86400000)-Math.floor((end.getTime()+10800000)/86400000));days=packageDays-elapsed;if(days<=0)throw new Error('انتهت المدة الصافية للباقة بعد احتساب الأيام المنقضية؛ اختر باقة أخرى.');}endsAt=datePlus(startsAt,days);
         sub={id:uid('sub'),customerId,numberId:n.id,companyId:co.id,status:'active',startsAt,endsAt,days,addedDays:days,rateSnapshot:null,pointsCost:cost,protectionPackageId:p.id,protectionPackageSnapshot:{name:p.name,days,pointsCost:cost},previousSubscriptionId:latest?.id||null,createdAt:stamp};db.subscriptions.push(sub);
       }
-      const op={id:uid('protectop'),customerId,numberId:n.id,companyId:co.id,subscriptionId:sub.id,packageId:p.id,packageSnapshot:{name:p.name,days,pointsCost:cost},type:operationType,pointsCost:cost,startsAt,endsAt,createdAt:stamp,idempotencyKey:idempotencyKey||null};db.protectionOperations.push(op);
+      const op={id:uid('protectop'),customerId,numberId:n.id,companyId:co.id,subscriptionId:sub.id,packageId:p.id,packageSnapshot:{name:p.name,days:sub.days,offeredDays:packageDays,pointsCost:cost},type:operationType,pointsCost:cost,startsAt,endsAt,createdAt:stamp,idempotencyKey:idempotencyKey||null};db.protectionOperations.push(op);
       db.pointTransactions.push({id:uid('pt'),customerId,type:'debit',points:cost,source:'protection_operation',sourceId:op.id,createdAt:stamp,description:`${operationType==='subscribe'?'اشتراك حماية':operationType==='extend'?'تمديد حماية':'تجديد حماية'} للرقم ${n.number} — ${p.name}`});
       const cfg=co.taskSchedule||{},interval=Number(cfg.intervalDays),expense=Number(cfg.expenseAmount);if(!Number.isInteger(interval)||interval<=0||!Number.isFinite(expense)||expense<=0)throw new Error('إعدادات المهام للشركة غير صالحة.');
-      if(!continuesCurrent){
-        if(cfg.createFirstOnActivation!==false)db.tasks.push({id:uid('task'),subscriptionId:sub.id,numberId:n.id,customerId,companyId:co.id,dueAt:stamp,visibleAt:stamp,status:'due',expenseAmount:expense,createdAt:stamp});
-      }else{
-        const planned=db.tasks.filter(t=>t.subscriptionId===sub.id&&['planned','due'].includes(t.status));
-        for(const t of planned){if(new Date(t.dueAt)>Date.now()&&!cfg.createAfterExpiry&&new Date(t.dueAt)>new Date(endsAt))t.status='cancelled';}
-      }
+      regenerateTaskPlan(db,sub,{...cfg,intervalDays:interval,expenseAmount:expense});
       if(idempotencyKey)db.idempotencyKeys.push({id:uid('idem'),customerId,key:idempotencyKey,createdAt:stamp,entityId:op.id});
-      return{entityType:'protection_operation',entityId:op.id,summary:`${operationType} باقة ${p.name} للرقم ${n.number}`,cost,subscriptionId:sub.id};
+      return{entityType:'protection_operation',entityId:op.id,summary:`${operationType} باقة ${p.name} للرقم ${n.number}`,cost,subscriptionId:sub.id,endsAt:sub.endsAt,netDays:sub.days};
     });
   }
   async function savePackage(adminId, input) {
@@ -259,7 +297,16 @@
   }
   async function markNoticeRead(customerId, noticeId) { return transact(customerId,'notification_read',db=>{const n=db.notifications.find(x=>x.id===noticeId&&x.customerId===customerId);if(!n)throw new Error('الإشعار غير موجود لهذا الحساب.');if(!n.readAt)n.readAt=now();return {entityType:'notification',entityId:n.id,summary:'قراءة إشعار محلي'};}); }
   async function updateContent(adminId, key, value) { if(!['terms','privacy','contact'].includes(key))throw new Error('نوع المحتوى غير صالح.');return transact(adminId,'content_updated',db=>{db.content[key]=String(value||'');return {entityType:'content',entityId:key,summary:`تعديل محتوى ${key}`};}); }
+  function searchNumberStatus(customerId,value){
+    const db=read(),digits=digitsOnly(value);if(!digits)throw new Error('أدخل رقمًا صالحًا للبحث.');
+    const n=db.numbers.find(x=>digitsOnly(x.number)===digits),co=(n&&db.companies.find(x=>x.id===n.companyId))||companyFor(digits,db),sub=n&&db.subscriptions.filter(x=>x.numberId===n.id&&x.status==='active').sort((a,b)=>new Date(b.endsAt)-new Date(a.endsAt))[0],active=sub&&new Date(sub.startsAt)<=Date.now()&&new Date(sub.endsAt)>Date.now();
+    const owner=!!sub&&sub.customerId===customerId;
+    if(!co||!validPhone(digits,co))throw new Error('تعذر تحديد شركة أو طول صالح لهذا الرقم.');
+    if(!active)return{number:digits,companyId:co.id,companyName:co.name,protected:false,ownedByRequester:n?.customerId===customerId,added:db.numbers.some(x=>x.customerId===customerId&&digitsOnly(x.number)===digits)};
+    if(!owner)return{number:digits,companyId:co.id,companyName:co.name,protected:true,ownedByRequester:false,added:db.numbers.some(x=>x.customerId===customerId&&digitsOnly(x.number)===digits)};
+    return{number:digits,companyId:co.id,companyName:co.name,protected:true,ownedByRequester:true,subscription:{startsAt:sub.startsAt,endsAt:sub.endsAt,status:sub.status,packageName:sub.protectionPackageSnapshot?.name||null}};
+  }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,transact,balance,balanceFrom,companyFor,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,transact,balance,balanceFrom,companyFor,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });
