@@ -87,6 +87,8 @@ create table public.customer_numbers (
 );
 create index customer_numbers_owner_idx on public.customer_numbers(customer_id);
 
+
+
 create table public.purchase_requests (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references public.customer_profiles(user_id) on delete restrict,
@@ -136,6 +138,53 @@ create table public.point_transactions (
   unique(source_type,source_id,entry_type)
 );
 create index point_transactions_owner_time_idx on public.point_transactions(customer_id,created_at desc);
+
+-- Current local model: a phone record is separate from account links and protection ownership.
+alter table public.customer_numbers alter column customer_id drop not null;
+create table public.number_customer_links (
+  number_id uuid not null references public.customer_numbers(id) on delete restrict,
+  customer_id uuid not null references public.customer_profiles(user_id) on delete restrict,
+  created_at timestamptz not null default now(),
+  primary key(number_id,customer_id)
+);
+alter table public.number_customer_links enable row level security;
+create policy number_links_read_owner_or_admin on public.number_customer_links for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
+create policy number_links_admin_manage on public.number_customer_links for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
+
+create table public.protection_packages (
+  id uuid primary key default gen_random_uuid(), company_id uuid not null references public.companies(id) on delete restrict,
+  name text not null, duration_days integer not null check(duration_days>0), points_cost integer not null check(points_cost>0),
+  is_available boolean not null default true, created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create table public.company_task_settings (
+  company_id uuid primary key references public.companies(id) on delete restrict,
+  create_first_on_activation boolean not null default false, interval_days integer not null check(interval_days>0),
+  visible_before_days integer not null default 0 check(visible_before_days>=0), expense_amount numeric(14,2) not null check(expense_amount>0),
+  allow_reschedule boolean not null default false, create_after_expiry boolean not null default false,
+  allow_during_grace boolean not null default false, grace_days integer not null default 0 check(grace_days>=0), updated_at timestamptz not null default now()
+);
+create table public.protection_operations (
+  id uuid primary key default gen_random_uuid(), customer_id uuid not null references public.customer_profiles(user_id) on delete restrict,
+  number_id uuid not null references public.customer_numbers(id) on delete restrict, subscription_id uuid not null references public.subscriptions(id) on delete restrict,
+  package_id uuid references public.protection_packages(id) on delete set null, operation_type text not null check(operation_type in ('subscribe','extend','renew')),
+  package_snapshot jsonb not null, points_cost integer not null check(points_cost>0), starts_at timestamptz not null, ends_at timestamptz not null,
+  idempotency_key text, created_at timestamptz not null default now(), unique(customer_id,idempotency_key)
+);
+alter table public.protection_packages enable row level security;
+alter table public.company_task_settings enable row level security;
+alter table public.protection_operations enable row level security;
+create policy protection_packages_read_available on public.protection_packages for select to authenticated using (is_available or public.is_aman_admin());
+create policy protection_packages_admin_manage on public.protection_packages for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
+create policy company_task_settings_admin_only on public.company_task_settings for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
+create policy protection_operations_read_owner_or_admin on public.protection_operations for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
+alter table public.point_transactions drop constraint if exists point_transactions_source_type_check;
+alter table public.point_transactions add constraint point_transactions_source_type_check check(source_type in ('purchase','subscription','protection_operation','adjustment','migration'));
+
+-- Subscriber is a derived classification, not a client-editable account flag.
+create or replace view public.customer_subscriber_status with (security_invoker=true) as
+select c.user_id, exists(select 1 from public.purchase_requests r where r.customer_id=c.user_id and r.status='approved') as is_subscriber
+from public.customer_profiles c;
+
 
 create view public.customer_point_balances with (security_invoker=true) as
 select customer_id,
@@ -255,7 +304,7 @@ create policy packages_read_available on public.points_packages for select to au
 create policy packages_admin_all on public.points_packages for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
 create policy payment_methods_read_available on public.payment_methods for select to authenticated using (is_available or public.is_aman_admin());
 create policy payment_methods_admin_all on public.payment_methods for all to authenticated using (public.is_aman_admin()) with check (public.is_aman_admin());
-create policy numbers_read_owner_or_admin on public.customer_numbers for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
+create policy numbers_read_owner_or_admin on public.customer_numbers for select to authenticated using (public.is_aman_admin() or exists(select 1 from public.number_customer_links l where l.number_id=id and l.customer_id=auth.uid()));
 create policy requests_read_owner_or_admin on public.purchase_requests for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
 create policy subscriptions_read_owner_or_admin on public.subscriptions for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
 create policy points_read_owner_or_admin on public.point_transactions for select to authenticated using (customer_id=auth.uid() or public.is_aman_admin());
@@ -281,8 +330,15 @@ begin
    limit 1;
   if not found then raise exception 'company_prefix_not_found'; end if;
   if not (char_length(digits) = any(co.number_lengths)) then raise exception 'invalid_number_length'; end if;
-  insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
-   values(auth.uid(),co.id,digits) returning id into new_id;
+  select id into new_id from public.customer_numbers where phone_e164_or_national=digits for update;
+  if new_id is null then
+    insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
+     values(null,co.id,digits) returning id into new_id;
+  elsif not exists(select 1 from public.customer_numbers where id=new_id and company_id=co.id) then
+    raise exception 'number_company_conflict';
+  end if;
+  insert into public.number_customer_links(number_id,customer_id) values(new_id,auth.uid()) on conflict do nothing;
+  if not found then raise exception 'number_already_linked_to_account'; end if;
   insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
    values(auth.uid(),'number_added','customer_number',new_id,'success','إضافة رقم للعميل دون إنشاء اشتراك');
   return new_id;
@@ -304,8 +360,15 @@ begin
    limit 1;
   if not found then raise exception 'company_prefix_not_found'; end if;
   if not (char_length(digits) = any(co.number_lengths)) then raise exception 'invalid_number_length'; end if;
-  insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
-   values(p_customer_id,co.id,digits) returning id into new_id;
+  select id into new_id from public.customer_numbers where phone_e164_or_national=digits for update;
+  if new_id is null then
+    insert into public.customer_numbers(customer_id,company_id,phone_e164_or_national)
+     values(null,co.id,digits) returning id into new_id;
+  elsif not exists(select 1 from public.customer_numbers where id=new_id and company_id=co.id) then
+    raise exception 'number_company_conflict';
+  end if;
+  insert into public.number_customer_links(number_id,customer_id) values(new_id,p_customer_id) on conflict do nothing;
+  if not found then raise exception 'number_already_linked_to_customer'; end if;
   insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
    values(auth.uid(),'admin_number_added','customer_number',new_id,'success','إضافة رقم للعميل من الإدارة دون إنشاء اشتراك');
   return new_id;
@@ -379,7 +442,6 @@ begin
       values(r.customer_id,'credit',points_value,'purchase',r.id,'اعتماد طلب نقاط '||r.id::text) returning id into tx_id;
     insert into public.finance_entries(kind,amount,currency,source_type,source_id,customer_id,description,created_by)
       values('revenue',price_value,coalesce(r.package_snapshot->>'currency','YER'),'purchase',r.id,r.customer_id,'إيراد طلب شراء نقاط '||r.id::text,auth.uid());
-    update public.customer_profiles set is_subscriber=true where user_id=r.customer_id;
   end if;
   insert into public.audit_events(actor_id,event_type,entity_type,entity_id,outcome,safe_summary)
     values(auth.uid(),'purchase_'||p_decision::text,'purchase_request',r.id,'success','مراجعة طلب شراء نقاط');
@@ -394,7 +456,7 @@ begin
   if auth.uid() is null then raise exception 'authentication_required'; end if;
   if nullif(trim(p_idempotency_key),'') is null then raise exception 'idempotency_key_required'; end if;
   perform 1 from public.customer_profiles where user_id=auth.uid() for update;
-  select * into n from public.customer_numbers where id=p_number_id and customer_id=auth.uid() for update;
+  select * into n from public.customer_numbers where id=p_number_id and exists(select 1 from public.number_customer_links l where l.number_id=customer_numbers.id and l.customer_id=auth.uid()) for update;
   if not found then raise exception 'number_not_owned'; end if;
   select * into co from public.companies where id=n.company_id and is_active for share;
   if not found or p_days<>all(co.allowed_durations_days) or co.daily_rate_points<=0 then raise exception 'invalid_company_or_duration'; end if;

@@ -191,10 +191,10 @@ test('الترحيل من تذكرني القديم يحذف كلمة المرو
 test('باقات الحماية مستقلة عن باقات النقاط والاشتراك يسجل عملية مستقلة وخصمًا واحدًا',async()=>{
   await D.saveProtectionPackage('admin-demo',{id:'protect-30',companyId:'co-net71',name:'حماية 30 يوم',days:30,pointsCost:75,active:true});
   let d=D.read();assert.equal(d.packages.some(x=>x.id==='protect-30'),false);assert.equal(d.protectionPackages.length,1);
-  const before=D.balance('cus-demo-subscriber');const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-30','subscribe','protection-once');
+  await D.addNumber('cus-demo-subscriber','711234560');const newNumber=D.customerNumbers('cus-demo-subscriber').find(n=>n.number==='711234560');const before=D.balance('cus-demo-subscriber');const {result}=await D.performProtectionOperation('cus-demo-subscriber',newNumber.id,'protect-30','subscribe','protection-once');
   d=D.read();assert.equal(D.balance('cus-demo-subscriber'),before-75);assert.equal(d.protectionOperations.filter(x=>x.id===result.entityId).length,1);assert.equal(d.pointTransactions.filter(x=>x.source==='protection_operation'&&x.sourceId===result.entityId).length,1);
   const task=d.tasks.find(x=>x.subscriptionId===result.subscriptionId);assert.ok(task);assert.equal(task.status,'due');assert.ok(Math.abs(Date.now()-new Date(task.dueAt).getTime())<5000);
-  await assert.rejects(()=>D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-30','subscribe','protection-once'),/بالفعل/);
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-subscriber',newNumber.id,'protect-30','subscribe','protection-once'),/بالفعل/);
   assert.equal(D.balance('cus-demo-subscriber'),before-75);
 });
 
@@ -246,7 +246,7 @@ test('حد كلمة المرور الأدنى أربع خانات في تسجي�
 test('عدد المهام يتبع مدة الباقة والفاصل ويبدأ بالمهمة الفورية عند تفعيلها',async()=>{
   await D.transact('admin-demo','schedule-test',d=>{const c=d.companies.find(x=>x.id==='co-net71');Object.assign(c.taskSchedule,{intervalDays:7,visibleBeforeDays:2,expenseAmount:1000,createFirstOnActivation:true,createAfterExpiry:false,graceDays:0});return{entityType:'company',entityId:c.id,summary:'تهيئة اختبار الجدول'}});
   await D.saveProtectionPackage('admin-demo',{id:'protect-180',companyId:'co-net71',name:'اختبار 20',days:20,pointsCost:1,active:true});
-  const {result}=await D.performProtectionOperation('cus-demo-subscriber','num-1003','protect-180','subscribe','schedule-180');
+  await D.addNumber('cus-demo-subscriber','711234561');const newNumber=D.customerNumbers('cus-demo-subscriber').find(n=>n.number==='711234561');const {result}=await D.performProtectionOperation('cus-demo-subscriber',newNumber.id,'protect-180','subscribe','schedule-180');
   const d=D.read(),sub=d.subscriptions.find(x=>x.id===result.subscriptionId),tasks=d.tasks.filter(x=>x.subscriptionId===sub.id).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt));
   assert.equal(tasks.length,3);assert.equal(tasks[0].dueAt,sub.startsAt);assert.ok(tasks.every(t=>new Date(t.dueAt)<=new Date(sub.endsAt)));assert.equal(tasks[0].visibleAt,sub.startsAt);
 });
@@ -276,3 +276,29 @@ test('واجهة الإدارة تعرض إعدادات المهام في شاش
 test('عرض العميل يقتصر على سجلاته ويخفي تفاصيل اشتراكات الآخرين',()=>{const d=D.readForCustomer('cus-demo-new');assert.deepEqual(d.customers.map(x=>x.id),['cus-demo-new']);assert.equal(d.subscriptions.some(x=>x.customerId!=='cus-demo-new'),false);assert.equal(d.pointTransactions.some(x=>x.customerId!=='cus-demo-new'),false);assert.equal(d.financeEntries.length,0);});
 test('إضافة الرقم تنشئ علاقة حساب منفصلة ولا تنقل ملكية الاشتراك السابق',async()=>{const n=D.read().numbers.find(x=>x.id==='num-1001'),sub=D.read().subscriptions.find(x=>x.numberId===n.id);await D.addNumber('cus-demo-new',n.number);const d=D.read();assert.equal(d.numbers.find(x=>x.id===n.id).customerId,'cus-demo-subscriber');assert.ok(D.customerNumbers('cus-demo-new',d).some(x=>x.id===n.id));assert.equal(d.subscriptions.find(x=>x.id===sub.id).customerId,'cus-demo-subscriber');const result=D.searchNumberStatus('cus-demo-new',n.number);assert.equal(result.protected,true);assert.equal(result.subscription,undefined);});
 test('حساب الأيام التقويمية يحافظ على توقيت صنعاء عند عبور الشهر والكبيسة',()=>{assert.equal(D.datePlus('2024-02-28T21:00:00.000Z',1),'2024-02-29T21:00:00.000Z');assert.equal(D.datePlus('2026-10-31T21:00:00.000Z',1),'2026-11-01T21:00:00.000Z');});
+
+test('تصنيف المشترك مشتق من اعتماد شراء فعلي وليس من علم محفوظ أو طلب معلق',async()=>{
+  const d=D.read();d.customers.find(c=>c.id==='cus-demo-new').isSubscriber=true;
+  assert.equal(D.isSubscriber(d,'cus-demo-new'),false);assert.equal(D.isSubscriber(d,'cus-demo-subscriber'),true);
+  const {result}=await D.createPurchase('cus-demo-new','pkg-100','pay-wallet','PENDING-NOT-SUBSCRIBER');
+  assert.equal(D.isSubscriber(D.read(),'cus-demo-new'),false);
+  await D.reviewPurchase('admin-demo',result.entityId,'approved');assert.equal(D.isSubscriber(D.read(),'cus-demo-new'),true);
+});
+
+test('لا يمكن تجاوز بوابة التجديد ببدء اشتراك جديد لرقم له سجل حماية منتهٍ',async()=>{
+  await D.saveProtectionPackage('admin-demo',{id:'pkg-protection-gate',companyId:'co-net77',name:'حماية اختبار',days:30,pointsCost:1,active:true});
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-low','num-1001','pkg-protection-gate','subscribe','gate-1'),/سارٍ/);
+  await D.saveProtectionPackage('admin-demo',{id:'pkg-protection-gate-71',companyId:'co-net71',name:'حماية اختبار 71',days:30,pointsCost:1,active:true});
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-new','num-1003','pkg-protection-gate-71','subscribe','gate-2'),/مسار التجديد/);
+  await assert.rejects(()=>D.performProtectionOperation('cus-demo-low','num-1003','pkg-protection-gate-71','renew','gate-3'),/لا يملك هذا الحساب سجل الحماية المطلوب تجديده/);
+});
+
+test('تمديد حماية رقم مشترك آخر مسموح مع إبقاء ملكية الاشتراك وإضافة الخصم لمُنفّذ العملية فقط',async()=>{
+  await D.saveProtectionPackage('admin-demo',{id:'pkg-protection-external',companyId:'co-net77',name:'تمديد خارجي تجريبي',days:7,pointsCost:1,active:true});
+  const balance=D.balance('cus-demo-low'),beforeEnd=D.read().subscriptions.find(s=>s.id==='sub-1001').endsAt;
+  const {result}=await D.performProtectionOperation('cus-demo-low','num-1001','pkg-protection-external','extend','external-extend-once');
+  const d=D.read(),sub=d.subscriptions.find(s=>s.id==='sub-1001'),op=d.protectionOperations.find(x=>x.id===result.entityId);
+  assert.equal(sub.customerId,'cus-demo-subscriber');assert.equal(D.balance('cus-demo-low'),balance-1);assert.equal(op.customerId,'cus-demo-low');
+  assert.equal(op.startsAt,beforeEnd);assert.equal(op.packageSnapshot.days,7);assert.equal(d.pointTransactions.filter(x=>x.sourceId===op.id).length,1);
+  const privateView=D.readForCustomer('cus-demo-new');assert.equal(privateView.subscriptions.some(x=>x.numberId==='num-1001'),false);
+});

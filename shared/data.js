@@ -40,7 +40,7 @@
       customers: [], companies: [], packages: [], protectionPackages: [], paymentMethods: [], purchaseRequests: [],
       numbers: [], numberLinks: [], subscriptions: [], protectionOperations: [], pointTransactions: [], tasks: [], operations: [],
       financeEntries: [], notifications: [], idempotencyKeys: [],
-      notificationSettings: { subscriptionExpiring: true, purchaseStatus: true, taskUpdates: true },
+      notificationSettings: { subscriptionExpiring: true, purchaseStatus: true, taskUpdates: true, protectionUpdates: true },
       admin: { id: 'admin-local', name: 'مدير النظام', email: 'admin@aman.test', darkMode: false, lockEnabled: false },
       content: { terms: '', privacy: '', contact: '' }
     };
@@ -53,7 +53,7 @@
     for(const k of collections){if(d[k]===undefined)d[k]=[];else if(!Array.isArray(d[k]))throw new Error(`بنية مجموعة ${k} غير صالحة؛ لم تُستبدل البيانات.`);}
     if(!d.admin)d.admin={id:'admin-demo',name:'مدير تجريبي',email:'admin@aman.test',darkMode:false,lockEnabled:false};
     if(!d.content)d.content={terms:'',privacy:'',contact:''};
-    d.notificationSettings={subscriptionExpiring:true,purchaseStatus:true,taskUpdates:true,...(d.notificationSettings||{})};
+    d.notificationSettings={subscriptionExpiring:true,purchaseStatus:true,taskUpdates:true,protectionUpdates:true,...(d.notificationSettings||{})};
     d.customers.forEach((c,i)=>{c.id ||= `legacy-customer-${i+1}`;c.accountId ||= c.id;c.status ||= 'active';c.isSubscriber=Boolean(c.isSubscriber||c.firstPurchaseApproved||d.purchaseRequests.some(r=>r.customerId===c.id&&['approved','معتمد','مكتملة'].includes(r.status)));});
     d.companies.forEach((c,i)=>{c.id ||= `legacy-company-${i+1}`;c.name ||= `شركة ${i+1}`;c.prefixes=safeArray(c.prefixes).map(String);c.lengths=safeArray(c.lengths).map(Number);c.dailyRate=Number(c.dailyRate||c.dailyTariff||c.tariff||0);c.durations=safeArray(c.durations).map(Number);if(c.taskSchedule)c.taskSchedule={...c.taskSchedule};c.active=c.active!==false;});
     d.packages.forEach((p,i)=>{p.id ||= `legacy-package-${i+1}`;p.name ||= `باقة ${i+1}`;p.points=Number(p.points||0);p.price=Number(p.price||0);p.active=p.active!==false;});
@@ -126,6 +126,7 @@
   }
   function balanceFrom(db, customerId) { return db.pointTransactions.filter(x=>x.customerId===customerId).reduce((s,x)=>s+(x.type==='credit'?1:-1)*Number(x.points),0); }
   function balance(customerId, db=read()) { return balanceFrom(db,customerId); }
+  function isSubscriber(db, customerId) { return db.purchaseRequests.some(r=>r.customerId===customerId&&['approved','معتمد','مكتملة'].includes(r.status)); }
   function companyFor(number, db=read()) {
     const digits=digitsOnly(number);
     return db.companies.filter(c=>c.active!==false&&(c.prefixes||[]).some(p=>digits.startsWith(String(p).replace(/\D/g,''))))
@@ -262,18 +263,21 @@
       if(operationType==='subscribe'&&current)throw new Error('يوجد اشتراك حماية سارٍ؛ استخدم التمديد أو التجديد.');
       if(operationType==='extend'&&!current)throw new Error('التمديد متاح للاشتراك الساري فقط؛ استخدم التجديد أو الاشتراك.');if(operationType==='renew'&&current)throw new Error('الحماية لا تزال سارية؛ استخدم التمديد بدل التجديد.');
       if(operationType==='renew'&&!latest)throw new Error('لا يوجد اشتراك سابق لتجديده؛ استخدم الاشتراك الجديد.');
+      if(!current&&latest&&operationType==='subscribe')throw new Error('يوجد سجل حماية سابق لهذا الرقم؛ استخدم مسار التجديد بعد التحقق من المهلة.');
+      if(!current&&latest&&operationType==='renew'&&latest.customerId!==customerId)throw new Error('لا يمكن تجديد سجل حماية لا يخص هذا الحساب.');
       const cost=Number(p.pointsCost),packageDays=Number(p.days);let days=packageDays;if(balanceFrom(db,customerId)<cost)throw new Error('رصيد أمان غير كافٍ؛ لم يتم خصم نقاط أو تغيير الحماية.');
       const stamp=now();let sub,startsAt,endsAt;
       if(continuesCurrent){
-        startsAt=current.startsAt;endsAt=datePlus(current.endsAt,days);current.endsAt=endsAt;current.days=Number(current.days||0)+days;current.addedDays=Number(current.addedDays||0)+days;current.updatedAt=stamp;sub=current;
+        startsAt=current.endsAt;endsAt=datePlus(current.endsAt,days);current.endsAt=endsAt;current.days=Number(current.days||0)+days;current.addedDays=Number(current.addedDays||0)+days;current.updatedAt=stamp;sub=current;
       }else{
         if(operationType==='subscribe'&&current)throw new Error('يوجد اشتراك سارٍ.');
         if(operationType==='subscribe'&&latest&&latest.status==='active'&&new Date(latest.endsAt)>Date.now())throw new Error('يوجد اشتراك سارٍ.');
         startsAt=stamp;days=packageDays;if(operationType==='renew'&&latest){const end=new Date(latest.endsAt),nowDate=new Date(stamp),elapsed=Math.max(0,Math.floor((nowDate.getTime()+10800000)/86400000)-Math.floor((end.getTime()+10800000)/86400000));days=packageDays-elapsed;if(days<=0)throw new Error('انتهت المدة الصافية للباقة بعد احتساب الأيام المنقضية؛ اختر باقة أخرى.');}endsAt=datePlus(startsAt,days);
         sub={id:uid('sub'),customerId,numberId:n.id,companyId:co.id,status:'active',startsAt,endsAt,days,addedDays:days,rateSnapshot:null,pointsCost:cost,protectionPackageId:p.id,protectionPackageSnapshot:{name:p.name,days,pointsCost:cost},previousSubscriptionId:latest?.id||null,createdAt:stamp};db.subscriptions.push(sub);
       }
-      const op={id:uid('protectop'),customerId,numberId:n.id,companyId:co.id,subscriptionId:sub.id,packageId:p.id,packageSnapshot:{name:p.name,days:sub.days,offeredDays:packageDays,pointsCost:cost},type:operationType,pointsCost:cost,startsAt,endsAt,createdAt:stamp,idempotencyKey:idempotencyKey||null};db.protectionOperations.push(op);
+      const op={id:uid('protectop'),customerId,numberId:n.id,companyId:co.id,subscriptionId:sub.id,packageId:p.id,packageSnapshot:{name:p.name,days,offeredDays:packageDays,pointsCost:cost},type:operationType,pointsCost:cost,startsAt,endsAt,createdAt:stamp,idempotencyKey:idempotencyKey||null};db.protectionOperations.push(op);
       db.pointTransactions.push({id:uid('pt'),customerId,type:'debit',points:cost,source:'protection_operation',sourceId:op.id,createdAt:stamp,description:`${operationType==='subscribe'?'اشتراك حماية':operationType==='extend'?'تمديد حماية':'تجديد حماية'} للرقم ${n.number} — ${p.name}`});
+      if(db.notificationSettings?.protectionUpdates)db.notifications.unshift({id:uid('notice'),customerId,title:operationType==='extend'?'تم تمديد الحماية':'تم تحديث حماية الرقم',body:`اكتملت عملية ${operationType==='subscribe'?'تفعيل':operationType==='extend'?'تمديد':'تجديد'} الحماية للرقم ${n.number} محليًا.`,numberId:n.id,status:'delivered-local',createdAt:stamp,readAt:null});
       const cfg=co.taskSchedule||{},interval=Number(cfg.intervalDays),expense=Number(cfg.expenseAmount);if(!Number.isInteger(interval)||interval<=0||!Number.isFinite(expense)||expense<=0)throw new Error('إعدادات المهام للشركة غير صالحة.');
       regenerateTaskPlan(db,sub,{...cfg,intervalDays:interval,expenseAmount:expense});
       if(idempotencyKey)db.idempotencyKeys.push({id:uid('idem'),customerId,key:idempotencyKey,createdAt:stamp,entityId:op.id});
@@ -289,7 +293,7 @@
   async function sendLocalNotice(adminId, title, body, audience='all', customerId='') {
     if(!['all','subscribers','customer'].includes(audience))throw new Error('جمهور الإشعار غير صالح.');
     if(!String(title||'').trim()||!String(body||'').trim())throw new Error('عنوان الإشعار ونصه مطلوبان.');
-    return transact(adminId,'admin_notice_created',db=>{const recipients=audience==='customer'?[db.customers.find(c=>c.id===customerId)].filter(Boolean):db.customers.filter(c=>audience==='subscribers'?c.isSubscriber:true);if(!recipients.length)throw new Error('لا يوجد جمهور مطابق.');for(const c of recipients)db.notifications.push({id:uid('notice'),customerId:c.id,title:String(title).trim(),body:String(body).trim(),status:'delivered-local',createdAt:now(),readAt:null});return {entityType:'notification',entityId:null,summary:`إشعار محلي إلى ${recipients.length} عميلًا`};});
+    return transact(adminId,'admin_notice_created',db=>{const recipients=audience==='customer'?[db.customers.find(c=>c.id===customerId)].filter(Boolean):db.customers.filter(c=>audience==='subscribers'?isSubscriber(db,c.id):true);if(!recipients.length)throw new Error('لا يوجد جمهور مطابق.');for(const c of recipients)db.notifications.push({id:uid('notice'),customerId:c.id,title:String(title).trim(),body:String(body).trim(),status:'delivered-local',createdAt:now(),readAt:null});return {entityType:'notification',entityId:null,summary:`إشعار محلي إلى ${recipients.length} عميلًا`};});
   }
   async function markNoticeRead(customerId, noticeId) { return transact(customerId,'notification_read',db=>{const n=db.notifications.find(x=>x.id===noticeId&&x.customerId===customerId);if(!n)throw new Error('الإشعار غير موجود لهذا الحساب.');if(!n.readAt)n.readAt=now();return {entityType:'notification',entityId:n.id,summary:'قراءة إشعار محلي'};}); }
   async function updateContent(adminId, key, value) { if(!['terms','privacy','contact'].includes(key))throw new Error('نوع المحتوى غير صالح.');return transact(adminId,'content_updated',db=>{db.content[key]=String(value||'');return {entityType:'content',entityId:key,summary:`تعديل محتوى ${key}`};}); }
@@ -305,5 +309,5 @@
   }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,companyFor,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });
