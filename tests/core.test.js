@@ -302,3 +302,11 @@ test('تمديد حماية رقم مشترك آخر مسموح مع إبقاء 
   assert.equal(op.startsAt,beforeEnd);assert.equal(op.packageSnapshot.days,7);assert.equal(d.pointTransactions.filter(x=>x.sourceId===op.id).length,1);
   const privateView=D.readForCustomer('cus-demo-new');assert.equal(privateView.subscriptions.some(x=>x.numberId==='num-1001'),false);
 });
+
+
+test('تهيئة أداة الواجهة المشتركة تعمل وتعيد شرطة للقيم الفارغة',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'..','shared','ui.js'),'utf8');
+  const window={};new Function('window','document',source)(window,{addEventListener(){}});
+  assert.equal(typeof window.AmanUI,'object');assert.equal(window.AmanUI.date(null),'—');assert.equal(window.AmanUI.day(null),'—');
+  assert.ok(window.AmanUI.date('2026-10-15'));assert.ok(window.AmanUI.day('2026-10-15'));
+});
