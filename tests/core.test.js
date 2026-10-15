@@ -27,8 +27,8 @@ test('اكتشاف الشركة بأطول بادئة مطابقة ودعم ال
 
 test('إضافة الرقم لا تخصم نقاطًا ولا تنشئ اشتراكًا وتمنع التكرار',async()=>{
   const before=D.balance('cus-demo-new');await D.addNumber('cus-demo-new','٧٧١٢٣٤٠٠٠');const d=D.read();
-  const n=d.numbers.find(x=>x.number==='771234000');assert.ok(n);assert.equal(n.customerId,'cus-demo-new');assert.equal(D.balance('cus-demo-new'),before);assert.equal(D.activeSubscription(d,n.id),null);
-  await assert.rejects(()=>D.addNumber('cus-demo-new','771234000'),/مسجل مسبقًا/);
+  const n=d.numbers.find(x=>x.number==='771234000');assert.ok(n);assert.equal(n.customerId??null,null);assert.equal(D.balance('cus-demo-new'),before);assert.equal(D.activeSubscription(d,n.id),null);
+  await assert.rejects(()=>D.addNumber('cus-demo-new','771234000'),/مضاف إلى حسابك بالفعل/);
   await assert.rejects(()=>D.addNumber('cus-demo-new','77123400'),/طول الرقم/);
   await assert.rejects(()=>D.addNumber('cus-demo-new','721234567'),/اكتشاف الشركة/);
 });
@@ -207,7 +207,7 @@ test('تمديد الحماية يحافظ على سجل الاشتراك نفس
 
 test('إعادة جدولة المهمة تتحقق من إعداد الشركة ولا تعيد ضبط سجل التنفيذ',async()=>{
   const before=D.read().tasks.find(x=>x.id==='task-due-demo').dueAt;const future=new Date(Date.now()+3*86400000).toISOString();
-  await D.rescheduleTask('admin-demo','task-due-demo',future);let d=D.read(),t=d.tasks.find(x=>x.id==='task-due-demo');assert.equal(t.dueAt,future);assert.equal(t.status,'planned');assert.equal(t.executedAt,undefined);assert.equal(d.operations.at(-1).type,'task_rescheduled');
+  await D.rescheduleTask('admin-demo','task-due-demo',future);let d=D.read(),t=d.tasks.find(x=>x.id==='task-due-demo');assert.equal(t.dueAt,future);assert.equal(t.status,'due');assert.equal(t.executedAt,undefined);assert.equal(d.operations.at(-1).type,'task_rescheduled');
   await D.transact('admin-demo','disable-reschedule',db=>{db.companies.find(x=>x.id==='co-net77').taskSchedule.allowReschedule=false;return{entityType:'company',entityId:'co-net77',summary:'disable'}});
   await assert.rejects(()=>D.rescheduleTask('admin-demo','task-due-demo',new Date(Date.now()+4*86400000).toISOString()),/معطلة/);assert.equal(D.read().tasks.find(x=>x.id==='task-due-demo').dueAt,future);assert.notEqual(before,future);
 });
@@ -272,3 +272,7 @@ test('واجهة الإدارة تعرض إعدادات المهام في شاش
   const admin=fs.readFileSync(path.join(__dirname,'..','apps','admin.js'),'utf8');
   assert.match(admin,/task-settings-form/);assert.match(admin,/مخطط المهام/);assert.match(admin,/visibleAt\|\|t\.dueAt/);
 });
+
+test('عرض العميل يقتصر على سجلاته ويخفي تفاصيل اشتراكات الآخرين',()=>{const d=D.readForCustomer('cus-demo-new');assert.deepEqual(d.customers.map(x=>x.id),['cus-demo-new']);assert.equal(d.subscriptions.some(x=>x.customerId!=='cus-demo-new'),false);assert.equal(d.pointTransactions.some(x=>x.customerId!=='cus-demo-new'),false);assert.equal(d.financeEntries.length,0);});
+test('إضافة الرقم تنشئ علاقة حساب منفصلة ولا تنقل ملكية الاشتراك السابق',async()=>{const n=D.read().numbers.find(x=>x.id==='num-1001'),sub=D.read().subscriptions.find(x=>x.numberId===n.id);await D.addNumber('cus-demo-new',n.number);const d=D.read();assert.equal(d.numbers.find(x=>x.id===n.id).customerId,'cus-demo-subscriber');assert.ok(D.customerNumbers('cus-demo-new',d).some(x=>x.id===n.id));assert.equal(d.subscriptions.find(x=>x.id===sub.id).customerId,'cus-demo-subscriber');const result=D.searchNumberStatus('cus-demo-new',n.number);assert.equal(result.protected,true);assert.equal(result.subscription,undefined);});
+test('حساب الأيام التقويمية يحافظ على توقيت صنعاء عند عبور الشهر والكبيسة',()=>{assert.equal(D.datePlus('2024-02-28T21:00:00.000Z',1),'2024-02-29T21:00:00.000Z');assert.equal(D.datePlus('2026-10-31T21:00:00.000Z',1),'2026-11-01T21:00:00.000Z');});

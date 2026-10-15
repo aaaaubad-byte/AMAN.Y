@@ -21,10 +21,10 @@
     const ago = d => new Date(t - d * 86400000).toISOString();
     const future = d => new Date(t + d * 86400000).toISOString();
     const companies = [
-      {id:'co-net77',name:'شبكة تجريبية 77',prefixes:['77','78'],lengths:[9],dailyRate:3,durations:[7,30,90],taskSchedule:{intervalDays:7,expenseAmount:2500,unit:'YER'},active:true},
-      {id:'co-net73',name:'شبكة تجريبية 73',prefixes:['73'],lengths:[9],dailyRate:4,durations:[7,30,60],taskSchedule:{intervalDays:5,expenseAmount:1800,unit:'YER'},active:true},
-      {id:'co-net71',name:'شبكة تجريبية 71',prefixes:['71'],lengths:[9],dailyRate:2,durations:[7,30,90],taskSchedule:{intervalDays:10,expenseAmount:2200,unit:'YER'},active:true},
-      {id:'co-net70',name:'شبكة تجريبية 70',prefixes:['70'],lengths:[9],dailyRate:3,durations:[7,30,90],taskSchedule:{intervalDays:7,expenseAmount:2000,unit:'YER'},active:true}
+      {id:'co-net77',name:'شبكة تجريبية 77',prefixes:['77','78'],lengths:[9],dailyRate:3,durations:[7,30,90],taskSchedule:{createFirstOnActivation:true,intervalDays:7,visibleBeforeDays:1,expenseAmount:2500,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:false,graceDays:0,unit:'YER'},active:true},
+      {id:'co-net73',name:'شبكة تجريبية 73',prefixes:['73'],lengths:[9],dailyRate:4,durations:[7,30,60],taskSchedule:{createFirstOnActivation:true,intervalDays:5,visibleBeforeDays:1,expenseAmount:1800,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:false,graceDays:0,unit:'YER'},active:true},
+      {id:'co-net71',name:'شبكة تجريبية 71',prefixes:['71'],lengths:[9],dailyRate:2,durations:[7,30,90],taskSchedule:{createFirstOnActivation:true,intervalDays:10,visibleBeforeDays:1,expenseAmount:2200,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:false,graceDays:0,unit:'YER'},active:true},
+      {id:'co-net70',name:'شبكة تجريبية 70',prefixes:['70'],lengths:[9],dailyRate:3,durations:[7,30,90],taskSchedule:{createFirstOnActivation:true,intervalDays:7,visibleBeforeDays:1,expenseAmount:2000,allowReschedule:true,createAfterExpiry:false,allowDuringGrace:false,graceDays:0,unit:'YER'},active:true}
     ];
     const customers = [
       {id:'cus-demo-subscriber',accountId:'AMAN-1001',name:'عميل تجريبي مشترك',email:'subscriber@aman.test',status:'active',isSubscriber:true,createdAt:ago(90)},
