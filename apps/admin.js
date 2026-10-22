@@ -1,0 +1,300 @@
+/* AMAN Admin — غلاف التطبيق: التوجيه، النوافذ السفلية، النماذج والعمليات.
+   كل الكتابة تمر عبر AmanData (المخزن المحلي AMAN_SHARED_REGISTRY_V2)؛ لا منطق أعمال هنا. */
+(function () {
+  'use strict';
+  const D = AmanData, U = AmanUI, K = AmanAdminKit, M = AmanAdminModel, S = AmanAdminScreens;
+  const E = K.esc, N = U.fmt, $ = s => document.querySelector(s);
+  const ADMIN = 'admin-demo';
+  const TABS = [['home', 'الرئيسية', 'home'], ['requests', 'الطلبات', 'receipt'], ['tasks', 'المهام', 'tasks'], ['customers', 'العملاء', 'users'], ['more', 'المزيد', 'grid']];
+  const TAB_OF = { home: 'home', requests: 'requests', request: 'requests', tasks: 'tasks', task: 'tasks', customers: 'customers', customer: 'customers' };
+
+  const ui = {
+    logged: sessionStorage.getItem('aman.admin') === '1', route: 'home', q: '', filter: 'all', view: null, sheet: false, busy: false, scroll: {},
+    demo: new URLSearchParams(location.search).get('demo') === '1'
+  };
+
+  /* ===================== الدخول وتذكر البريد (البريد فقط) ===================== */
+  function rememberedCredentials(kind) {
+    try {
+      const key = `aman.${kind}.remember`, v = JSON.parse(localStorage.getItem(key) || 'null'), result = { email: String(v?.email || ''), enabled: !!v?.enabled };
+      if (v && Object.prototype.hasOwnProperty.call(v, 'password')) { if (result.enabled) localStorage.setItem(key, JSON.stringify(result)); else localStorage.removeItem(key); }
+      return result;
+    } catch { return { email: '', enabled: false }; }
+  }
+  function saveRememberedCredentials(kind, email, enabled) {
+    if (enabled) localStorage.setItem(`aman.${kind}.remember`, JSON.stringify({ email, enabled: true }));
+    else localStorage.removeItem(`aman.${kind}.remember`);
+  }
+
+  /* ===================== المظهر ===================== */
+  function applyTheme() {
+    const t = localStorage.getItem('aman.customer.theme') || 'light';
+    document.body.classList.toggle('dark', t === 'dark' || (t === 'device' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches));
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', document.body.classList.contains('dark') ? '#0c0d0d' : '#f1f3f2');
+  }
+
+  /* ===================== التوجيه وسجل الرجوع ===================== */
+  const hashRoute = () => decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home';
+  const histState = () => (history.state && history.state.amanAdmin ? history.state : null);
+  const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+)$/.test(r);
+  function parentOf(r) {
+    const [n, a, b] = r.split('/');
+    if (n === 'request') return 'requests/pending';
+    if (n === 'task') return 'tasks/available';
+    if (n === 'customer') return 'customers/all';
+    if (n === 'number') return 'numbers/active';
+    if (n === 'finance-entry') return 'finance';
+    if (n === 'company') return b === 'tasks' ? 'task-settings' : (b === 'edit' ? `company/${a}` : 'companies');
+    if (n === 'package') return b === 'edit' ? `package/${a}` : 'packages';
+    if (n === 'protection' && a) return b === 'edit' ? `protection/${a}` : 'protection';
+    if (n === 'payment') return b === 'edit' ? `payment/${a}` : 'payments';
+    if (n === 'content' && a) return 'content';
+    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance'].includes(n)) return 'more';
+    return 'home';
+  }
+  function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
+  function go(route, { replace = false, keepQuery = false } = {}) {
+    if (!route) return;
+    closeSheet();
+    saveScroll();
+    const d = histState()?.d || 0, st = { amanAdmin: true, route, d: replace ? d : d + 1 };
+    (replace ? history.replaceState : history.pushState).call(history, st, '', '#/' + route);
+    if (ui.route.split('/')[0] !== route.split('/')[0]) { if (!keepQuery) ui.q = ''; }
+    ui.filter = 'all';
+    ui.route = route;
+    render({ top: true });
+  }
+  function back(fallback) {
+    closeSheet();
+    if ((histState()?.d || 0) > 0) history.back();
+    else go(fallback || parentOf(ui.route), { replace: true });
+  }
+  window.addEventListener('popstate', e => {
+    if (!ui.logged) return;
+    if (ui.sheet) { // زر الرجوع في الهاتف يغلق النافذة السفلية أولًا ولا يغادر الصفحة
+      closeSheet();
+      history.pushState({ amanAdmin: true, route: ui.route, d: (e.state?.d || 0) + 1 }, '', '#/' + ui.route);
+      return;
+    }
+    const r = e.state?.amanAdmin ? e.state.route : hashRoute();
+    if (r !== ui.route) { ui.q = ''; ui.filter = 'all'; }
+    ui.route = r;
+    render({ restore: true });
+  });
+
+  /* ===================== العرض ===================== */
+  function fatal(e) {
+    $('#screen').className = 'screen'; $('#bar').innerHTML = ''; $('#tabbar').hidden = true;
+    $('#screen').innerHTML = `<div class="card empty" style="margin-top:40px">${K.tile('info', 'bad')}<b>تعذر تحميل البيانات</b><p>${E(e.message)}</p><p>لم تُستبدل البيانات المحفوظة. صدّر نسخة احتياطية قبل أي تغيير في إعدادات المتصفح.</p></div>`;
+  }
+  function render(opt = {}) {
+    let d;
+    try { d = D.read(); } catch (e) { fatal(e); return; }
+    applyTheme();
+    const screen = $('#screen'), tabbar = $('#tabbar'), barEl = $('#bar'), keepTop = screen.scrollTop;
+    if (!ui.logged) {
+      const v = S.login(rememberedCredentials('admin'));
+      ui.view = v; screen.className = 'screen auth dark-auth'; screen.innerHTML = v.html; barEl.innerHTML = ''; tabbar.hidden = true; return;
+    }
+    const v = S.build(ui.route, d, ui); ui.view = v;
+    let html = v.html;
+    if (v.title) html = K.bar(v.title, v.sub || '', v.end || '') + html;
+    screen.className = 'screen' + (v.bar ? ' with-bar' : '');
+    screen.innerHTML = html;
+    barEl.innerHTML = v.bar || '';
+    const active = v.tab || TAB_OF[ui.route.split('/')[0]] || 'more';
+    const pend = d.purchaseRequests.filter(r => r.status === 'pending').length;
+    tabbar.hidden = v.chrome !== 'tabs';
+    tabbar.innerHTML = TABS.map(([k, label, icon]) => `<button type="button" class="tab" data-act="go" data-to="${k === 'requests' ? 'requests/pending' : k === 'tasks' ? 'tasks/available' : k === 'customers' ? 'customers/all' : k}" ${k === active ? 'aria-current="page"' : ''}>${K.ico(icon)}<span>${label}</span>${k === 'requests' && pend ? `<i class="badge" aria-label="${pend} طلب معلق">${N(pend)}</i>` : ''}</button>`).join('');
+    document.title = (v.title ? v.title + ' | ' : '') + 'أمان | الإدارة';
+    if (opt.top) screen.scrollTop = 0; else if (opt.restore) screen.scrollTop = ui.scroll[ui.route] || 0; else screen.scrollTop = keepTop;
+    if (v.autofocus && !opt.restore) $('#q')?.focus();
+  }
+  function refreshList() { const b = $('#listbody'); if (b && ui.view) b.innerHTML = ui.view.list ? ui.view.list() : ui.view.results ? ui.view.results() : b.innerHTML; }
+
+  /* ===================== التنبيه والنوافذ ===================== */
+  function toast(text, bad = false) {
+    const e = $('#toast'); e.textContent = text; e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad); e.classList.toggle('up', !!$('#bar .actionbar'));
+    clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hidden'), 3800);
+  }
+  function openSheet(title, body, foot) {
+    ui.sheet = true; $('#sheetRoot').innerHTML = K.sheet(title, body, foot);
+    setTimeout(() => $('#sheetRoot input:not([type=hidden]),#sheetRoot textarea,#sheetRoot select')?.focus(), 30);
+  }
+  function closeSheet() { if (!ui.sheet) return; ui.sheet = false; $('#sheetRoot').innerHTML = ''; }
+  function showError(msg) {
+    const el = document.querySelector('#sheetRoot #form-error') || $('#form-error');
+    if (el) { el.textContent = msg; el.classList.remove('hidden'); el.scrollIntoView?.({ block: 'nearest' }); return true; }
+    toast(msg, true); return false;
+  }
+  function clearError() { document.querySelectorAll('#form-error').forEach(e => e.classList.add('hidden')); }
+  const lockables = () => document.querySelectorAll('[data-submit],.btn[data-confirm]');
+  async function run(fn) {
+    if (ui.busy) return false;
+    ui.busy = true; clearError(); lockables().forEach(b => b.disabled = true);
+    try { await fn(); return true; }
+    catch (err) { showError(err?.message || 'تعذرت العملية ولم تُحفظ.'); return false; }
+    finally { ui.busy = false; lockables().forEach(b => b.disabled = false); }
+  }
+  const formFoot = label => K.submitBtn(label, 'sheet-form') + K.btn('إلغاء', 'sheet-close');
+  const errBox = '<div id="form-error" class="form-error hidden" role="alert"></div>';
+
+  /* ===================== نوافذ العمليات ===================== */
+  const strong = t => `<b style="color:var(--ink)">${t}</b>`;
+  function reviewSheet(id, decision) {
+    const d = D.read(), r = d.purchaseRequests.find(x => x.id === id);
+    if (!r) return toast('الطلب غير موجود.', true);
+    const ok = decision === 'approved', pk = r.packageSnapshot || {}, c = M.customer(d, r.customerId);
+    openSheet(ok ? 'اعتماد طلب النقاط' : 'رفض طلب النقاط',
+      `<p class="sheet-text">${ok ? `سيُضاف ${strong(N(pk.points) + ' نقطة')} إلى رصيد ${E(c?.name || 'العميل')}، ويُسجَّل إيراد ${strong(N(pk.price) + ' ر.ي')} في السجل المالي مرة واحدة. الاعتماد يخص طلب الشراء فقط ولا ينشئ اشتراكًا لأي رقم.` : 'سيُرفض الطلب دون إضافة نقاط أو تسجيل إيراد، ولا يمكن مراجعته مرة ثانية.'}</p>
+<div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (اختياري)' : 'سبب الرفض (اختياري)'}</label><input id="reviewNote" name="note" autocomplete="off" placeholder="${ok ? 'ملاحظة داخلية' : 'سبب الرفض أو ملاحظة'}"></div></div>${errBox}`,
+      K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + K.btn('إلغاء', 'sheet-close'));
+  }
+  function executeSheet(id) {
+    const t = D.read().tasks.find(x => x.id === id);
+    if (!t) return toast('المهمة غير موجودة.', true);
+    openSheet(new Date(t.dueAt) > Date.now() ? 'تنفيذ المهمة مبكرًا' : 'تنفيذ المهمة', `<p class="sheet-text">سيُسجَّل مصروف المهمة ${strong(N(t.expenseAmount) + ' ر.ي')} في السجل المالي مرة واحدة، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي وفق إعدادات الشركة. لا يتغير رصيد نقاط العميل.</p>${errBox}`,
+      K.btn('تأكيد التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + K.btn('إلغاء', 'sheet-close'));
+  }
+  function reschedSheet(id) {
+    const t = D.read().tasks.find(x => x.id === id);
+    if (!t) return toast('المهمة غير موجودة.', true);
+    const local = new Date(new Date(t.dueAt).getTime() + 10800000).toISOString().slice(0, 16);
+    openSheet('إعادة جدولة المهمة', `<form id="sheet-form" data-form="resched"><input type="hidden" name="taskId" value="${E(t.id)}">${K.fields(K.field({ name: 'dueAt', label: 'الموعد الجديد', type: 'datetime-local', value: local, required: true }))}<p class="note">يُحدَّث الموعد والمواعيد اللاحقة في الخطة دون إعادة ضبط دورة المهام (بتوقيت صنعاء).</p>${errBox}</form>`, formFoot('حفظ الموعد الجديد'));
+  }
+  function financeAddSheet() {
+    openSheet('إضافة قيد مالي يدوي', `<form id="sheet-form" data-form="finance-add">${K.fields(K.field({ name: 'kind', label: 'نوع القيد', type: 'select', value: 'revenue', options: [['revenue', 'إيراد'], ['expense', 'مصروف']] }) + K.field({ name: 'amount', label: 'القيمة بالريال اليمني', type: 'number', min: 0.01, step: 0.01, required: true, inputmode: 'decimal' }) + K.field({ name: 'description', label: 'البيان', required: true }))}<p class="note">القيد اليدوي لا يغير رصيد نقاط أي عميل.</p>${errBox}</form>`, formFoot('حفظ القيد'));
+  }
+  function reverseSheet(id) {
+    const x = D.read().financeEntries.find(e => e.id === id);
+    if (!x) return toast('القيد المالي غير موجود.', true);
+    openSheet('عكس قيد مالي', `<p class="sheet-text">سيُنشأ قيد معاكس بالمبلغ نفسه (${N(x.amount)} ر.ي) مع الاحتفاظ بالقيد الأصلي. لا يمكن عكس القيد نفسه مرتين.</p><form id="sheet-form" data-form="finance-reverse"><input type="hidden" name="entryId" value="${E(id)}">${K.fields(K.field({ name: 'reason', label: 'سبب العكس', type: 'textarea', required: true, minlength: 3, rows: 3, placeholder: 'اكتب سبب التصحيح' }))}${errBox}</form>`, formFoot('تأكيد عكس القيد'));
+  }
+  function addNumberSheet(customerId = '') {
+    const d = D.read();
+    if (!d.customers.length) return toast('أنشئ حساب العميل أولًا من تطبيق العميل.', true);
+    openSheet('إضافة رقم لعميل', `<form id="sheet-form" data-form="admin-number">${K.fields(K.field({ name: 'customerId', label: 'العميل', type: 'select', value: customerId, required: true, options: d.customers.map(c => [c.id, `${c.name} — ${c.email}`]) }) + K.field({ name: 'number', label: 'رقم الهاتف', required: true, inputmode: 'numeric', dir: 'ltr' }))}<p class="note">إضافة الرقم لا تخصم نقاطًا ولا تنشئ اشتراكًا؛ تُكتشف الشركة من بادئة الرقم.</p>${errBox}</form>`, formFoot('إضافة الرقم'));
+  }
+  function noticeSheet() {
+    const d = D.read();
+    openSheet('إنشاء إشعار إداري', `<form id="sheet-form" data-form="notice">${K.fields(K.field({ name: 'title', label: 'العنوان', required: true }) + K.field({ name: 'body', label: 'النص', type: 'textarea', required: true, rows: 3 }) + K.field({ name: 'audience', label: 'الجمهور', type: 'select', value: 'all', options: [['all', 'كل العملاء'], ['subscribers', 'المشتركون'], ['customer', 'عميل محدد']] }) + `<div id="notice-customer" class="hidden">${K.field({ name: 'customerId', label: 'العميل', type: 'select', options: d.customers.map(c => [c.id, c.name]) })}</div>`)}<p class="note">إشعار محلي داخل هذه المعاينة؛ لا يُرسل خارج المتصفح.</p>${errBox}</form>`, formFoot('إنشاء محليًا'));
+  }
+  function logoutSheet() {
+    openSheet('تسجيل الخروج', '<p class="sheet-text">ستنتهي جلسة الإدارة التجريبية على هذا المتصفح. لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary') + K.btn('إلغاء', 'sheet-close'));
+  }
+
+  /* ===================== معالجة النقر ===================== */
+  const withTab = (route, tab) => { const p = route.split('/'); return p[0] === 'customer' ? `customer/${p[1]}/${tab}` : `${p[0]}/${tab}`; };
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const a = b.dataset.act, id = b.dataset.id;
+    if (a === 'sheet-scrim') { if (e.target === b) closeSheet(); return; }
+    try {
+      switch (a) {
+        case 'go': go(b.dataset.to); return;
+        case 'back': back(); return;
+        case 'tab': go(withTab(ui.route, b.dataset.tab), { replace: true, keepQuery: true }); return;
+        case 'sheet-close': closeSheet(); return;
+        case 'review-open': reviewSheet(id, b.dataset.decision); return;
+        case 'task-execute-open': executeSheet(id); return;
+        case 'task-resched-open': reschedSheet(id); return;
+        case 'finance-add-open': financeAddSheet(); return;
+        case 'finance-reverse-open': reverseSheet(id); return;
+        case 'add-number-open': addNumberSheet(b.dataset.customer || ''); return;
+        case 'notice-open': noticeSheet(); return;
+        case 'logout-open': logoutSheet(); return;
+        case 'logout-confirm': sessionStorage.removeItem('aman.admin'); ui.logged = false; closeSheet(); history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
+        case 'review-confirm': {
+          const note = $('#reviewNote')?.value || '', decision = b.dataset.decision;
+          await run(async () => { await D.reviewPurchase(ADMIN, id, decision, note); closeSheet(); toast(decision === 'approved' ? 'اعتُمد الطلب: أُضيفت النقاط وسُجل الإيراد مرة واحدة، ولم يُنشأ اشتراك.' : 'رُفض الطلب دون نقاط أو إيراد.'); render(); }); return;
+        }
+        case 'execute-confirm': await run(async () => { await D.executeTask(ADMIN, id); closeSheet(); toast('نُفذت المهمة وسُجل مصروفها ومهمتها التالية وفق الخطة.'); render(); }); return;
+        case 'unrestrict': await run(async () => { await D.transact(ADMIN, 'number_restriction_cleared', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); delete n.restricted; delete n.restrictionReason; delete n.restrictedAt; return { entityType: 'number', entityId: n.id, summary: `رفع تقييد الرقم ${n.number}` }; }); toast('رُفع التقييد الإداري عن الرقم.'); render(); }); return;
+        case 'export-data': {
+          const payload = D.exportJSON(), blob = new Blob([payload], { type: 'application/json' }), url = URL.createObjectURL(blob), link = document.createElement('a'), stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          link.href = url; link.download = `aman-local-backup-${stamp}.json`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+          toast('تم تنزيل نسخة البيانات المحلية. احتفظ بها في مكان خاص وآمن.'); return;
+        }
+        case 'demo-seed': await run(seedDemo); return;
+      }
+    } catch (x) { toast(x.message || 'تعذرت العملية ولم تُحفظ.', true); }
+  });
+
+  async function seedDemo() {
+    if (new URLSearchParams(location.search).get('demo') !== '1') throw new Error('فعّل وضع المعاينة بإضافة ?demo=1 إلى الرابط.');
+    await import('../tests/fixture-data.js');
+    const fixture = window.AmanTestFixture;
+    if (!fixture?.seedData) throw new Error('تعذر تحميل بيانات المعاينة.');
+    const sample = fixture.seedData(), now = Date.now(), earlyTask = sample.tasks.find(t => t.id === 'task-future-demo');
+    if (earlyTask) {
+      earlyTask.dueAt = new Date(now + 86400000).toISOString(); earlyTask.visibleAt = new Date(now - 3600000).toISOString();
+      sample.tasks.push({ ...earlyTask, id: 'task-upcoming-demo', dueAt: new Date(now + 8 * 86400000).toISOString(), visibleAt: new Date(now + 7 * 86400000).toISOString() }, { ...earlyTask, id: 'task-cancelled-demo', status: 'cancelled', dueAt: new Date(now + 15 * 86400000).toISOString(), visibleAt: new Date(now + 14 * 86400000).toISOString() });
+    }
+    const bytes = new TextEncoder().encode('aman1234'), hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('');
+    for (const c of sample.customers) c.authHash = hash;
+    const keys = ['customers', 'companies', 'packages', 'paymentMethods', 'purchaseRequests', 'numbers', 'subscriptions', 'pointTransactions', 'tasks', 'operations', 'financeEntries', 'notifications', 'idempotencyKeys', 'protectionPackages', 'protectionOperations', 'numberLinks'];
+    await D.transact(ADMIN, 'demo_fixture_loaded', d => {
+      if (keys.some(k => (d[k] || []).length)) throw new Error('المخزن يحتوي بيانات بالفعل؛ لم يتم تحميل أو استبدال أي سجل.');
+      for (const k of keys) d[k] = Array.isArray(sample[k]) ? sample[k] : [];
+      return { entityType: 'demo_fixture', entityId: 'demo-fixture', summary: 'تحميل بيانات معاينة اصطناعية إلى مخزن فارغ' };
+    });
+    toast('حُمّلت بيانات الاختبار محليًا.'); render();
+  }
+
+  /* ===================== معالجة النماذج ===================== */
+  const splitValues = v => String(v ?? '').split(/[,،;；\n\r\t ]+/).map(x => x.trim()).filter(Boolean);
+  document.addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target, kind = f.dataset.form, fd = new FormData(f);
+    if (kind === 'login') {
+      const email = String(fd.get('email')).trim().toLowerCase(), password = String(fd.get('password')), remember = fd.get('remember') === 'on';
+      if (email !== 'admin@aman.test' || password !== 'admin1234') { showError('بيانات الإدارة التجريبية غير صحيحة.'); return; }
+      saveRememberedCredentials('admin', email, remember);
+      sessionStorage.setItem('aman.admin', '1'); ui.logged = true;
+      history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
+    }
+    await run(async () => {
+      switch (kind) {
+        case 'company-form': await D.saveCompany(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), prefixes: splitValues(fd.get('prefixes')), lengths: splitValues(fd.get('lengths')), active: fd.has('active') }); toast('حُفظت بيانات الشركة وسُجل الحدث.'); back(); return;
+        case 'package-form': await D.savePackage(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), points: fd.get('points'), price: fd.get('price'), active: fd.has('active') }); toast('حُفظت الباقة وسُجل الحدث.'); back(); return;
+        case 'protection-form': await D.saveProtectionPackage(ADMIN, { id: fd.get('id') || undefined, companyId: fd.get('companyId'), name: fd.get('name'), days: fd.get('days'), pointsCost: fd.get('pointsCost'), active: fd.has('active') }); toast('حُفظت باقة الحماية وسُجل الحدث.'); back(); return;
+        case 'payment-form': await D.savePaymentMethod(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), summary: fd.get('summary'), instructions: fd.get('instructions'), active: fd.has('active') }); toast('حُفظت وسيلة الدفع وسُجل الحدث.'); back(); return;
+        case 'task-settings-form': await D.saveTaskSettings(ADMIN, fd.get('companyId'), { intervalDays: fd.get('intervalDays'), visibleBeforeDays: fd.get('visibleBeforeDays'), expenseAmount: fd.get('expenseAmount'), graceDays: fd.get('graceDays'), createFirstOnActivation: fd.has('createFirstOnActivation'), allowReschedule: fd.has('allowReschedule'), createAfterExpiry: fd.has('createAfterExpiry'), allowDuringGrace: fd.has('allowDuringGrace') }); toast('حُفظت إعدادات الشركة وأعيد حساب المهام المفتوحة.'); back(); return;
+        case 'content-form': await D.updateContent(ADMIN, fd.get('kind'), fd.get('value')); toast('تم حفظ المحتوى محليًا.'); back(); return;
+        case 'resched': await D.rescheduleTask(ADMIN, fd.get('taskId'), new Date(`${fd.get('dueAt')}:00+03:00`).toISOString()); closeSheet(); toast('أعيدت جدولة المهمة دون تغيير دورة المهام.'); render(); return;
+        case 'finance-add': await D.addFinancialEntry(ADMIN, fd.get('kind'), fd.get('amount'), fd.get('description')); closeSheet(); toast('حُفظ القيد وسُجل الحدث.'); render(); return;
+        case 'finance-reverse': await D.reverseFinancialEntry(ADMIN, fd.get('entryId'), fd.get('reason')); closeSheet(); toast('أُنشئ القيد العكسي مع بقاء القيد الأصلي.'); render(); return;
+        case 'admin-number': await D.addNumber(fd.get('customerId'), fd.get('number')); closeSheet(); toast('أُضيف الرقم إلى حساب العميل دون تفعيل اشتراك أو خصم نقاط.'); render(); return;
+        case 'notice': await D.sendLocalNotice(ADMIN, fd.get('title'), fd.get('body'), fd.get('audience'), fd.get('customerId')); closeSheet(); toast('أُنشئ الإشعار محليًا.'); render(); return;
+        default: throw new Error('تعذر العثور على النموذج.');
+      }
+    });
+  });
+
+  /* ===================== البحث والفلترة والإعدادات ===================== */
+  document.addEventListener('input', e => { if (e.target.id === 'q') { ui.q = e.target.value; refreshList(); } });
+  document.addEventListener('change', async e => {
+    const t = e.target;
+    if (t.id === 'flt') { ui.filter = t.value; refreshList(); return; }
+    if (t.name === 'audience' && t.closest('#sheet-form')) { $('#notice-customer')?.classList.toggle('hidden', t.value !== 'customer'); return; }
+    if (t.id === 'adminDark' || t.dataset.setting) {
+      await run(async () => {
+        await D.transact(ADMIN, 'admin_setting_changed', d => {
+          if (t.id === 'adminDark') { d.admin.darkMode = t.checked; localStorage.setItem('aman.customer.theme', t.checked ? 'dark' : 'light'); localStorage.setItem('aman.customer.dark', t.checked ? '1' : '0'); }
+          else d.notificationSettings[t.dataset.setting] = t.checked;
+          return { entityType: 'admin_setting', entityId: t.id || t.dataset.setting, summary: 'تحديث إعداد إداري' };
+        });
+        render();
+      });
+    }
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); } });
+  window.addEventListener('storage', e => { if (e.key === D.KEY && ui.logged && !ui.sheet && !isForm(ui.route)) render(); });
+  window.addEventListener('pageshow', () => { if (!ui.sheet && !isForm(ui.route)) render(); });
+
+  /* ===================== الإقلاع ===================== */
+  ui.route = ui.logged ? hashRoute() : 'home';
+  if (!histState()) history.replaceState({ amanAdmin: true, route: ui.route, d: 0 }, '', '#/' + ui.route);
+  render({ top: true });
+})();
