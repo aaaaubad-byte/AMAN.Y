@@ -85,7 +85,18 @@ test('مرجع SQL يقيّد تحديث الإشعار ويحدد صلاحيا�
 });
 
 
-test('واجهة العميل تعرض قائمة أرقام الحساب مع البحث والفلترة في شاشة الأرقام، وتستخدم زر اختيار صغيرًا في بحث الرئيسية دون تكرار القائمة',()=>{const customer=read('apps/customer.js'),css=read('apps/customer-base.css'),data=read('shared/data.js');assert.match(data,/for\(const sub of db\.subscriptions\)if\(sub\.customerId===customerId\)ids\.add\(sub\.numberId\)/);assert.match(customer,/function numbersPage\(d\)\{const ns=owned\(d\);return pageHead\('الأرقام'\)\+numberFilters\(d,ns\)\+`<div class="customer-number-list">/);assert.match(customer,/class="number-filter-entry"/);assert.match(customer,/id="customerListSearch" class="field" type="search"/);assert.match(customer,/id="customerCompanyFilter" class="field"/);assert.match(customer,/function filterNumberCards\(\)/);assert.match(customer,/class="row number-search-row"/);assert.match(customer,/class="field number-search-input"/);assert.match(customer,/class="field number-picker"/);assert.match(css,/\.number-search-row \.number-search-input\{flex:1 1 auto;min-width:0;width:0\}/);assert.match(css,/\.number-search-row \.number-picker\{flex:0 0 42px;width:42px/);assert.doesNotMatch(customer,/function home\(d,c\)[\s\S]*?ns\.map\(n=>numberItem/);});
+test('واجهة العميل تعرض قائمة أرقام الحساب مع البحث والفلترة في شاشة الأرقام، وتستخدم زر اختيار صغيرًا في بحث الرئيسية دون تكرار القائمة',()=>{
+  const screens=read('apps/customer-screens.js'),shell=read('apps/customer.js'),css=read('apps/customer.css'),data=read('shared/data.js');
+  assert.match(data,/for\(const sub of db\.subscriptions\)if\(sub\.customerId===customerId\)ids\.add\(sub\.numberId\)/);
+  // شاشة الأرقام: قائمة الحساب + بحث + فلتر الشركة، وتُحدَّث القائمة وحدها أثناء الكتابة
+  assert.match(screens,/function numbers\(d, c, x\)/);assert.match(screens,/const all = owned\(d, c\.id\);/);
+  assert.match(screens,/K\.toolbar\('بحث برقم الهاتف'/);assert.match(screens,/\['', 'كل الشركات'\]/);assert.match(screens,/id="listbody" class="customer-number-list"/);
+  assert.match(shell,/if \(t\.id === 'q'\) \{ ui\.q = t\.value; refreshList\(\)/);assert.match(shell,/if \(t\.id === 'flt'\) \{ ui\.co = t\.value; refreshList\(\)/);
+  // بحث الرئيسية: حقل رقم + قائمة اختيار صغيرة لأرقام الحساب، دون تكرار قائمة الأرقام
+  const home=screens.slice(screens.indexOf('function home('),screens.indexOf('/* ===================== الأرقام والرادار'));
+  assert.match(home,/id="quickNumber"/);assert.match(home,/name: 'number'/);assert.doesNotMatch(home,/numberRow\(/);
+  assert.match(css,/\.select\.block select\{width:100%/);
+});
 
 
 test('تصنيفات واجهة المهام تميّز المتأخر والمبكر والمجدول والمكتمل والملغى',()=>{

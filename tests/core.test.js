@@ -110,15 +110,17 @@ test('جمهور الإشعار غير المعروف يُرفض بدل توجي
 
 test('الهوية البصرية الأساسية سوداء والأزرار العائمة مثبتة خارج تمرير المحتوى',()=>{
   const root=path.join(__dirname,'..','apps');
-  const customerCss=fs.readFileSync(path.join(root,'customer-base.css'),'utf8');
+  const customerCss=fs.readFileSync(path.join(root,'customer.css'),'utf8');
   const adminCss=fs.readFileSync(path.join(root,'admin.css'),'utf8');
-  const sharedCss=fs.readFileSync(path.join(root,'reference.css'),'utf8');
-  assert.match(customerCss,/--button:#141615/i);
-  assert.doesNotMatch(sharedCss,/#087F6E|#19989A|#E9F8F5|#6EE7B7/i);
-  assert.match(sharedCss,/\.floating-root \.floating-add\s*\{[^}]*position:absolute/s);
-  assert.match(sharedCss,/bottom:calc\(77px \+ 14px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.doesNotMatch(sharedCss,/position:sticky[^}]*floating-add|floating-add[^}]*position:sticky/i);
-  assert.doesNotMatch(customerCss,/position:sticky[^}]*floating-add|floating-add[^}]*position:sticky/i);
+  // العميل: الهوية المرجعية نفسها (إعادة البناء استبدلت customer-base.css وreference.css)
+  assert.match(customerCss,/--bg:#f1f3f2/i);assert.match(customerCss,/--black:#000/i);assert.match(customerCss,/--r-card:16px/);assert.match(customerCss,/--r-sheet:20px/);
+  assert.match(customerCss,/\.btn\.primary\{background:var\(--black\)/);
+  assert.doesNotMatch(customerCss,/#087F6E|#19989A|#E9F8F5|#6EE7B7/i);
+  // أزرار العميل الرئيسية مثبتة في #bar خارج منطقة التمرير فوق شريط التبويبات
+  const customerHtml=fs.readFileSync(path.join(root,'customer.html'),'utf8');
+  assert.match(customerHtml,/id="bar"/);assert.match(customerCss,/\.actionbar\{position:absolute/);
+  assert.doesNotMatch(customerCss,/position:sticky[^}]*actionbar|actionbar[^}]*position:sticky/i);
+  assert.doesNotMatch(customerHtml,/admin\.css|admin-kit|admin-screens|reference\.css|customer-base\.css/);
   // الإدارة: هوية المرجع البصري (خلفية #f1f3f2، بطاقة بيضاء 16، زر رئيسي أسود، نافذة سفلية 20)
   assert.match(adminCss,/--bg:#f1f3f2/i);assert.match(adminCss,/--black:#000/i);assert.match(adminCss,/--r-card:16px/);assert.match(adminCss,/--r-sheet:20px/);
   assert.match(adminCss,/\.btn\.primary\{background:var\(--black\)/);
@@ -139,12 +141,14 @@ test('مجموعة الاختبار المعزولة تحتوي الشركات �
 
 test('أيقونات الواجهات SVG ولا توجد مكتبات JavaScript خارجية مطلوبة للتشغيل',()=>{
   const root=path.join(__dirname,'..');
-  const customer=fs.readFileSync(path.join(root,'apps/customer.js'),'utf8');
+  const customer=['customer.js','customer-kit.js','customer-screens.js'].map(f=>fs.readFileSync(path.join(root,'apps',f),'utf8')).join('\n');
+  const customerKit=fs.readFileSync(path.join(root,'apps/customer-kit.js'),'utf8');
   const kit=fs.readFileSync(path.join(root,'apps/admin-kit.js'),'utf8');
   const screens=fs.readFileSync(path.join(root,'apps/admin-screens.js'),'utf8');
   const ui=fs.readFileSync(path.join(root,'shared/ui.js'),'utf8');
   const html=['index.html','apps/customer.html','apps/admin.html'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n');
-  assert.match(customer,/U\.icon\('home'\)/);assert.match(customer,/U\.icon\('copy'\)/);
+  assert.match(customerKit,/const ico = /);assert.match(customerKit,/P\[n\] \|\| P\.doc/);assert.match(customerKit,/stroke="currentColor"/);assert.doesNotMatch(customerKit,/<img|font-?awesome|material-icons/i);
+  assert.match(customerKit,/\n    home: '<path/);assert.match(customerKit,/\n    copy: '<rect/);assert.match(customer,/K\.ico\('copy'\)|icon: 'copy'/);
   assert.match(ui,/settings:'<path d="M4 6h16M4 12h16M4 18h16"/); // منزلقات الإعدادات، بلا ترس.
   assert.match(kit,/const ico = /);assert.match(kit,/P\[n\] \|\| P\.doc/);assert.match(ui,/const icon=/);
   assert.match(kit,/stroke="currentColor"/);assert.doesNotMatch(kit,/<img|font-?awesome|material-icons/i);
@@ -188,7 +192,7 @@ test('عكس القيد المالي يحافظ على الأصل ويوازن �
 test('الترحيل من تذكرني القديم يحذف كلمة المرور المخزنة ولا يمس البريد المحفوظ',()=>{
   const customer=fs.readFileSync(path.join(__dirname,'..','apps','customer.js'),'utf8');
   const admin=adminSrc();
-  assert.match(customer,/Object\.prototype\.hasOwnProperty\.call\(v,'password'\)/);
+  assert.match(customer,/Object\.prototype\.hasOwnProperty\.call\(v,\s*'password'\)/);
   assert.match(admin,/Object\.prototype\.hasOwnProperty\.call\(v,\s*'password'\)/);
   assert.doesNotMatch(customer,/JSON\.stringify\(\{email,password,enabled:true\}\)/);
   assert.doesNotMatch(admin,/JSON\.stringify\(\{\s*email,\s*password,\s*enabled:\s*true\s*\}\)/);
@@ -239,10 +243,10 @@ test('التجديد منفصل عن التمديد ولا يقبل حماية �
 
 test('حد كلمة المرور الأدنى أربع خانات في تسجيل العميل ودخوله وواجهة الإدارة',()=>{
   const root=path.join(__dirname,'..','apps');
-  const customer=fs.readFileSync(path.join(root,'customer.js'),'utf8');
+  const customer=['customer.js','customer-screens.js'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n');
   const admin=adminSrc();
   assert.match(customer,/minlength=\"4\"/);
-  assert.match(customer,/password\.length<4/);
+  assert.match(customer,/password\.length\s*<\s*4/);
   assert.match(customer,/كلمة المرور يجب ألا تقل عن 4 خانات/);
   assert.match(customer,/كلمة المرور \(4 خانات فأكثر\)/);
   assert.match(admin,/name="password" type="password" minlength="4"/);
@@ -322,7 +326,13 @@ test('تهيئة أداة الواجهة المشتركة تعمل وتعيد ش
   assert.ok(window.AmanUI.date('2026-10-15'));assert.ok(window.AmanUI.day('2026-10-15'));
 });
 
-test('نتيجة البحث تستبدل محتوى بطاقة الاستعلام نفسها مع إمكانية العودة للبحث',()=>{const source=fs.readFileSync(path.join(__dirname,'..','apps','customer.js'),'utf8');assert.match(source,/state\.lookup\?`<section class="card inquiry-result-card">/);assert.match(source,/data-action="search-again">بحث عن رقم آخر/);assert.match(source,/if\(a==='search-again'\)\{state\.lookup=null;render\(\);return\}/);assert.match(source,/if\(f\.id==='number-search'\)\{const v=new FormData\(f\)\.get\('number'\);state\.lookup=D\.searchNumberStatus\(state\.id,v\);render\(\);return\}/);});
+test('نتيجة البحث تستبدل محتوى بطاقة الاستعلام نفسها مع إمكانية العودة للبحث',()=>{
+  const read=f=>fs.readFileSync(path.join(__dirname,'..','apps',f),'utf8'),screens=read('customer-screens.js'),shell=read('customer.js');
+  assert.match(screens,/x\.lookup\s*\?\s*`<section class="card pad inquiry-result-card">/);
+  assert.match(screens,/K\.btn\('بحث عن رقم آخر', 'search-again'/);
+  assert.match(shell,/case 'search-again': ui\.lookup = null; render\(\); return;/);
+  assert.match(shell,/case 'number-search': ui\.lookup = D\.searchNumberStatus\(ui\.id, fd\.get\('number'\)\); render\(\); return;/);
+});
 
 
 test('نافذة الظهور تتيح تنفيذ المهمة مبكرًا دون إنشاء فوري، وتبدأ الدورة التالية من وقت التنفيذ',async()=>{
