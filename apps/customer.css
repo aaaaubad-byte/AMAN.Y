@@ -135,6 +135,7 @@ button.row:active{background:rgba(0,0,0,.04)}
 .field label{font-size:13px;color:var(--muted)}
 .field input,.field select{width:100%;min-height:40px;border:0;background:transparent;padding:8px 0;font-size:16px;outline:none;border-radius:0}
 .field select{appearance:none;-webkit-appearance:none;background-image:none}
+.field input[dir=ltr]{text-align:right}
 .field:focus-within{background:rgba(0,0,0,.025)}
 .field small{font-size:12px;color:var(--muted)}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;position:relative;font-size:15px;line-height:1.5}
