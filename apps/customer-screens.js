@@ -5,7 +5,7 @@
 
   const LABEL = { pending: 'قيد المراجعة', approved: 'معتمد', rejected: 'مرفوض', active: 'فعال', expired: 'منتهٍ', planned: 'مخطط', due: 'مستحق', executed: 'منفذ', extended: 'ممدد' };
   const TONE = { pending: 'warn', approved: 'ok', rejected: 'bad' };
-  const label = s => LABEL[s] || s;
+  const label = s => LABEL[s] || E(s);
   const OP_LABEL = { subscribe: 'اشتراك حماية', extend: 'تمديد حماية', renew: 'تجديد حماية' };
 
   const company = (d, n) => d.companies.find(c => c.id === n.companyId);
@@ -25,12 +25,12 @@
   const withBar = (title, sub, html, extra = {}) => ({ chrome: 'tabs', html: K.bar(title, sub) + html, ...extra });
 
   /* ===================== الدخول والتسجيل ===================== */
-  function login(saved) {
+  function login(saved, demo = false) {
     return `<div class="brand"><h1>أمان</h1><p>حماية أرقامك</p></div>
 <form id="login" data-form="login">
  <h2>تسجيل الدخول</h2>
- <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || 'demo@aman.test')}" required></div>
- <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="aman1234" required></div>
+ <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || (demo ? 'demo@aman.test' : ''))}" required></div>
+ <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="${demo ? 'aman1234' : ''}" required></div>
  <label class="remember"><input type="checkbox" name="remember" ${saved.enabled ? 'checked' : ''}><span>تذكرني وحفظ بيانات الدخول على هذا الجهاز</span></label>
  <div id="form-error" class="form-error hidden" role="alert"></div>
  <button class="btn primary" type="submit">دخول</button>

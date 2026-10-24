@@ -8,6 +8,7 @@
   const ROUTES = ['home', 'radar', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security'];
   const PARENT = { orders: 'buy', settings: 'account', security: 'account' };
 
+  const DEMO = new URLSearchParams(location.search).get('demo') === '1'; // وضع المعاينة فقط: تعبئة بيانات الدخول وحساب العميل التجريبي
   const ui = { id: sessionStorage.getItem('aman.customer') || '', route: 'home', auth: 'login', q: '', co: '', lookup: null, sheet: false, busy: false, view: null, pending: null, key: '', scroll: {} };
 
   /* ===================== الدخول وتذكر البريد (البريد فقط) ===================== */
@@ -22,9 +23,32 @@
     if (enabled) localStorage.setItem('aman.customer.remember', JSON.stringify({ email, enabled: true }));
     else localStorage.removeItem('aman.customer.remember');
   }
-  async function digest(p) {
+  /* كلمات المرور: PBKDF2-SHA256 بملح عشوائي لكل حساب. التجزئة القديمة (SHA-256 بلا ملح) تُقبل وتُرقّى عند أول دخول ناجح.
+     تنبيه: هذا نموذج محلي؛ التجزئة والتحقق في المتصفح لا يغنيان عن مصادقة خادم في الإنتاج. */
+  const PBKDF2_ITER = 150000;
+  const b64 = u8 => btoa(String.fromCharCode(...u8));
+  const unb64 = t => Uint8Array.from(atob(t), ch => ch.charCodeAt(0));
+  async function sha256hex(p) {
     const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
     return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+  async function pbkdf2(p, salt, iter) {
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(p), 'PBKDF2', false, ['deriveBits']);
+    return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256));
+  }
+  const sameText = (a, b) => { if (a.length !== b.length) return false; let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i); return r === 0; };
+  async function hashPassword(p) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    return `pbkdf2$${PBKDF2_ITER}$${b64(salt)}$${b64(await pbkdf2(p, salt, PBKDF2_ITER))}`;
+  }
+  async function verifyPassword(p, stored) {
+    if (typeof stored !== 'string' || !stored) return false;
+    if (stored.startsWith('pbkdf2$')) {
+      const [, iter, salt, hash] = stored.split('$'), n = Number(iter);
+      if (!Number.isInteger(n) || n < 1000 || !salt || !hash) return false;
+      return sameText(b64(await pbkdf2(p, unb64(salt), n)), hash);
+    }
+    return sameText(await sha256hex(p), stored); // تجزئة قديمة
   }
 
   /* ===================== المظهر والتفضيلات ===================== */
@@ -37,7 +61,8 @@
   }
 
   /* ===================== التوجيه وسجل الرجوع ===================== */
-  const hashRoute = () => { const r = decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; return ROUTES.includes(r) ? r : 'home'; };
+  // رابط فيه % مشوّه لا يجوز أن يكسر التطبيق: يُعامَل كمسار غير معروف فيعود إلى الرئيسية
+  const hashRoute = () => { let r = 'home'; try { r = decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { /* مشوّه */ } return ROUTES.includes(r) ? r : 'home'; };
   const histState = () => (history.state && history.state.amanCustomer ? history.state : null);
   function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
   function go(route, { replace = false } = {}) {
@@ -85,7 +110,7 @@
     const screen = $('#screen'), tabbar = $('#tabbar'), barEl = $('#bar'), keepTop = screen.scrollTop;
     if (!snap.c) {
       screen.className = 'screen auth auth-screen';
-      screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials()) : S.signup();
+      screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials(), DEMO) : S.signup();
       barEl.innerHTML = ''; tabbar.hidden = true; ui.view = null; return;
     }
     const v = S.build(ui.route, snap.d, snap.c, ctxNow());
@@ -219,11 +244,12 @@
           ui.pending = null; closeSheet(); ui.lookup = null; render(); toast('نُفذت عملية الحماية وسُجل الخصم محليًا.');
         }); return;
         case 'radar-toggle': await run(async () => {
-          await D.transact(ui.id, 'radar_toggled', d => { const n = D.customerNumbers(ui.id, d).find(x => x.id === id); if (!n || !D.activeSubscription(d, n.id)) throw new Error('لا يمكن متابعة الرقم قبل تفعيل الاشتراك.'); n.radar = !n.radar; return { entityType: 'number', entityId: n.id, summary: n.radar ? 'إضافة للرادار' : 'إزالة من الرادار' }; });
+          const n = ownedNumber(data(), id); if (!n) throw new Error('هذا الرقم غير موجود ضمن أرقام حسابك.');
+          await D.setRadar(ui.id, id, !n.radar);
           closeSheet(); render(); toast('تم تحديث المتابعة.');
         }); return;
         case 'radar-remove': await run(async () => {
-          await D.transact(ui.id, 'radar_toggled', d => { const n = D.customerNumbers(ui.id, d).find(x => x.id === id); if (n) n.radar = false; return { entityType: 'number', entityId: n?.id, summary: 'إيقاف متابعة الرادار' }; });
+          await D.setRadar(ui.id, id, false);
           render(); toast('تم إيقاف المتابعة.');
         }); return;
         case 'number-notifications': numberNotificationsSheet(id); return;
@@ -270,8 +296,8 @@
           if (password.length < 4) throw new Error('كلمة المرور يجب ألا تقل عن 4 خانات.');
           let c = D.read().customers.find(x => x.email.toLowerCase() === email);
           /* حساب معاينة محلي مخصص لتسريع اختبار واجهة العميل فقط. */
-          if (!c && email === 'demo@aman.test' && password === 'aman1234') {
-            const hash = await digest(password);
+          if (DEMO && !c && email === 'demo@aman.test' && password === 'aman1234') {
+            const hash = await hashPassword(password);
             const created = await D.transact('local-demo', 'customer_demo_created', x => {
               const existing = x.customers.find(y => y.email.toLowerCase() === email);
               if (existing) return { entityType: 'customer', entityId: existing.id, summary: 'استخدام حساب العميل التجريبي' };
@@ -283,7 +309,11 @@
             c = D.read().customers.find(x => x.id === created.result.entityId);
           }
           if (!c) throw new Error('البريد الإلكتروني غير مسجل.');
-          if (!c.authHash || (await digest(password)) !== c.authHash) throw new Error('بيانات الدخول غير صحيحة.');
+          if (!(await verifyPassword(password, c.authHash))) throw new Error('بيانات الدخول غير صحيحة.');
+          if (!String(c.authHash).startsWith('pbkdf2$')) { // ترقية التجزئة القديمة بعد التحقق الناجح
+            const upgraded = await hashPassword(password);
+            await D.transact('local-auth', 'password_hash_upgraded', d => { const x = d.customers.find(y => y.id === c.id); if (x) x.authHash = upgraded; return { entityType: 'customer', entityId: c.id, summary: 'ترقية تجزئة كلمة المرور' }; });
+          }
           saveRememberedCredentials(email, remember);
           ui.id = c.id; sessionStorage.setItem('aman.customer', c.id);
           history.replaceState({ amanCustomer: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
@@ -292,7 +322,7 @@
           const name = String(fd.get('name')).trim(), email = String(fd.get('email')).trim().toLowerCase(), password = String(fd.get('password'));
           if (password.length < 4) throw new Error('كلمة المرور يجب ألا تقل عن 4 خانات.');
           if (!$('#agree')?.checked) throw new Error('وافق على الشروط والأحكام للمتابعة.');
-          const hash = await digest(password);
+          const hash = await hashPassword(password);
           const { result } = await D.transact('local-signup', 'customer_registered', d => {
             if (d.customers.some(x => x.email.toLowerCase() === email)) throw new Error('البريد مسجل بالفعل.');
             const c = { id: D.uid('cus'), accountId: D.uid('AMAN'), name, email, status: 'active', isSubscriber: false, createdAt: D.now(), authHash: hash };

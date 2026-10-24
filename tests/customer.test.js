@@ -14,6 +14,9 @@ const D = require('../shared/data.js');
 require('../shared/ui.js');
 require(path.join(apps, 'customer-kit.js'));
 require(path.join(apps, 'customer-screens.js'));
+require(path.join(apps, 'admin-model.js'));
+require(path.join(apps, 'admin-kit.js'));
+require(path.join(apps, 'admin-screens.js'));
 const Fixture = require('./fixture-data.js');
 const S = AmanCustomerScreens;
 
@@ -98,4 +101,59 @@ test('عزل العميل: لا يحمّل ملفات الإدارة ولا يع
     assert.doesNotMatch(src, /localStorage\.(setItem|getItem)\(\s*['"]AMAN_SHARED_REGISTRY/, f + ' يجب ألا يصل للمخزن مباشرة');
     assert.doesNotMatch(src, /\b(reviewPurchase|executeTask|addFinancialEntry|saveCompany|savePackage|savePaymentMethod|sendLocalNotice|updateContent|reverseFinancialEntry|saveTaskSettings|rescheduleTask)\b/, f + ' يستدعي عملية إدارية');
   }
+});
+
+test('أمان: الرابط المشوّه لا يكسر التطبيقين، وبيانات الدخول لا تُعبّأ مسبقًا خارج وضع المعاينة', () => {
+  // decodeURIComponent على hash فيه % مشوّه كان يرمي URIError ويوقف التطبيق
+  for (const f of ['customer.js', 'admin.js']) assert.match(read(f), /const hashRoute = \(\) => \{[^\n]*try \{[^\n]*decodeURIComponent[^\n]*catch/, f);
+  const saved = { email: '', enabled: false };
+  assert.doesNotMatch(S.login(saved), /aman1234|demo@aman\.test/);
+  assert.match(S.login(saved, true), /aman1234/);
+  assert.doesNotMatch(AmanAdminScreens.login(saved).html, /admin1234|admin@aman\.test/);
+  assert.match(AmanAdminScreens.login(saved, true).html, /admin1234/);
+  // حساب العميل التجريبي لا يُنشأ إلا في وضع ?demo=1
+  assert.match(read('customer.js'), /DEMO && !c && email === 'demo@aman\.test'/);
+});
+
+test('أمان: كل صفحة HTML تعلن سياسة CSP تمنع السكربت المضمّن والمصادر الخارجية', () => {
+  for (const f of ['customer.html', 'admin.html', '../index.html']) {
+    const html = read(f), m = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/);
+    assert.ok(m, f + ' بلا CSP');
+    const script = m[1].split(';').map(x => x.trim()).find(x => x.startsWith('script-src'));
+    assert.equal(script, "script-src 'self'", f);
+    assert.match(m[1], /default-src 'self'/);assert.match(m[1], /object-src 'none'/);assert.match(m[1], /base-uri 'none'/);
+    assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i, f + ' يحوي سكربتًا مضمّنًا');
+    assert.doesNotMatch(html, /\son[a-z]+=/i, f + ' يحوي معالج حدث مضمّنًا');
+  }
+});
+
+test('أمان وخصوصية: الرادار تفضيل لكل عميل ولا ينتقل بين عملاء يشتركون في الرقم نفسه', async () => {
+  seed();
+  const num = D.read().numbers.find(n => n.id === 'num-1001');
+  await D.addNumber('cus-demo-low', num.number); // عميل ثانٍ يربط الرقم نفسه
+  await D.setRadar('cus-demo-subscriber', 'num-1001', true);
+  const a = D.readForCustomer('cus-demo-subscriber').numbers.find(n => n.id === 'num-1001');
+  const b = D.readForCustomer('cus-demo-low').numbers.find(n => n.id === 'num-1001');
+  assert.equal(a.radar, true);assert.equal(b.radar, false, 'تفضيل عميل لا يظهر لعميل آخر');
+  assert.equal(D.read().numbers.find(n => n.id === 'num-1001').radar, undefined, 'لا يُكتب على سجل الرقم المشترك');
+  await assert.rejects(() => D.setRadar('cus-demo-new', 'num-1001', true), /غير موجود ضمن أرقام حسابك/);
+  await assert.rejects(() => D.setRadar('cus-demo-subscriber', 'num-1003', true), /قبل تفعيل الاشتراك/);
+  await D.setRadar('cus-demo-subscriber', 'num-1001', false);
+  assert.equal(D.readForCustomer('cus-demo-subscriber').numbers.find(n => n.id === 'num-1001').radar, false);
+  D.read(); // المخزن يبقى صالحًا بعد إنشاء علاقة الربط
+});
+
+test('أمان: كلمات المرور PBKDF2 بملح وتُرقّى التجزئة القديمة، وحالة غير معروفة لا تُحقن في HTML', () => {
+  const js = read('customer.js');
+  assert.match(js, /name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter/);
+  assert.match(js, /crypto\.getRandomValues\(new Uint8Array\(16\)\)/);
+  assert.match(js, /await hashPassword\(password\)/);
+  assert.match(js, /password_hash_upgraded/);
+  assert.doesNotMatch(js, /authHash: hash.*digest/);
+  const evil = '<img src=x onerror=alert(1)>';
+  const all = seed();all.purchaseRequests[0].status = evil;
+  D.setStorageForTests(store(JSON.stringify(all)));
+  const id = all.purchaseRequests[0].customerId, d = D.readForCustomer(id);
+  const html = S.operationDetail(d, 'request', all.purchaseRequests[0].id, d.customers[0]).body + S.build('orders', d, d.customers[0], x({ id })).html;
+  assert.doesNotMatch(html, /<img src=x/);
 });

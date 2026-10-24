@@ -34,7 +34,8 @@
   }
 
   /* ===================== التوجيه وسجل الرجوع ===================== */
-  const hashRoute = () => decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home';
+  // رابط فيه % مشوّه لا يجوز أن يكسر التطبيق: يُعامَل كمسار غير معروف فيعود إلى الرئيسية
+  const hashRoute = () => { try { return decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { return 'home'; } };
   const histState = () => (history.state && history.state.amanAdmin ? history.state : null);
   const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+)$/.test(r);
   function parentOf(r) {
@@ -93,7 +94,7 @@
     applyTheme();
     const screen = $('#screen'), tabbar = $('#tabbar'), barEl = $('#bar'), keepTop = screen.scrollTop;
     if (!ui.logged) {
-      const v = S.login(rememberedCredentials('admin'));
+      const v = S.login(rememberedCredentials('admin'), ui.demo);
       ui.view = v; screen.className = 'screen auth dark-auth'; screen.innerHTML = v.html; barEl.innerHTML = ''; tabbar.hidden = true; return;
     }
     const v = S.build(ui.route, d, ui); ui.view = v;

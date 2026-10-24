@@ -11,11 +11,11 @@
   const match = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
 
   /* ------------------------------------------------------------------ */
-  function login(saved) {
+  function login(saved, demo = false) {
     return { chrome: 'auth', auth: true, html: `<div class="brand"><h1>أمان</h1><p>إدارة نظام أمان</p></div>
 <form id="admin-login" data-form="login">
- <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || 'admin@aman.test')}" required></div>
- <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="admin1234" required></div>
+ <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || (demo ? 'admin@aman.test' : ''))}" required></div>
+ <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="${demo ? 'admin1234' : ''}" required></div>
  <label class="remember"><input type="checkbox" name="remember" ${saved.enabled ? 'checked' : ''}><span>تذكرني وحفظ بيانات الدخول على هذا الجهاز</span></label>
  <div id="form-error" class="form-error hidden" role="alert"></div>
  <button class="btn primary" type="submit">دخول</button>
