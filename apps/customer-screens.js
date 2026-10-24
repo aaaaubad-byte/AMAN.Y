@@ -27,26 +27,27 @@
   /* ===================== الدخول والتسجيل ===================== */
   function login(saved, demo = false) {
     return `<div class="brand"><h1>أمان</h1><p>حماية أرقامك</p></div>
-<form id="login" data-form="login">
+<form id="login" data-form="login" novalidate>
  <h2>تسجيل الدخول</h2>
- <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || (demo ? 'demo@aman.test' : ''))}" required></div>
- <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="${demo ? 'aman1234' : ''}" required></div>
+ ${K.authField({ id: 'l_email', name: 'email', label: 'البريد الإلكتروني', type: 'email', autocomplete: 'username', dir: 'ltr', value: saved.email || (demo ? 'demo@aman.test' : '') })}
+ ${K.authField({ id: 'l_pass', name: 'password', label: 'كلمة المرور', type: 'password', minlength: 4, autocomplete: 'current-password', dir: 'ltr', value: demo ? 'aman1234' : '' })}
  <label class="remember"><input type="checkbox" name="remember" ${saved.enabled ? 'checked' : ''}><span>تذكرني وحفظ بيانات الدخول على هذا الجهاز</span></label>
  <div id="form-error" class="form-error hidden" role="alert"></div>
- <button class="btn primary" type="submit">دخول</button>
+ <button class="btn primary" type="submit" data-submit>دخول</button>
  <button type="button" class="btn ghost" data-act="signup-view">إنشاء حساب</button>
 </form>`;
   }
   function signup() {
     return `<div class="brand"><h1>أمان</h1><p>إنشاء حساب جديد</p></div>
-<form id="signup" data-form="signup">
+<form id="signup" data-form="signup" novalidate>
  <h2>إنشاء حساب</h2>
- <div class="afield"><label for="s_name">الاسم</label><input id="s_name" name="name" required autocomplete="name"></div>
- <div class="afield"><label for="s_email">البريد الإلكتروني</label><input id="s_email" name="email" type="email" dir="ltr" style="text-align:right" required autocomplete="email"></div>
- <div class="afield"><label for="s_pass">كلمة المرور (4 خانات فأكثر)</label><input id="s_pass" name="password" type="password" minlength="4" dir="ltr" style="text-align:right" required autocomplete="new-password"></div>
- <label class="remember"><input id="agree" type="checkbox" required><span>أوافق على <button type="button" class="link" data-act="terms">الشروط والأحكام</button></span></label>
+ ${K.authField({ id: 's_name', name: 'name', label: 'الاسم', autocomplete: 'name' })}
+ ${K.authField({ id: 's_email', name: 'email', label: 'البريد الإلكتروني', type: 'email', dir: 'ltr', autocomplete: 'email' })}
+ ${K.authField({ id: 's_pass', name: 'password', label: 'كلمة المرور (4 خانات فأكثر)', type: 'password', minlength: 4, dir: 'ltr', autocomplete: 'new-password', extra: K.strengthMeter('pass-strength') })}
+ <label class="remember"><input id="agree" type="checkbox" aria-describedby="agree-err"><span>أوافق على <button type="button" class="link" data-act="terms">الشروط والأحكام</button></span></label>
+ <small class="ferr hidden" id="agree-err" role="alert"></small>
  <div id="form-error" class="form-error hidden" role="alert"></div>
- <button class="btn primary" type="submit">إنشاء الحساب</button>
+ <button class="btn primary" type="submit" data-submit>إنشاء الحساب</button>
  <button type="button" class="btn ghost" data-act="login-view">العودة للدخول</button>
 </form>`;
   }
@@ -71,7 +72,7 @@
     const picker = ns.length ? `<div style="margin-top:10px"><label class="select block">${K.ico('caret')}<select id="quickNumber" aria-label="اختيار رقم من أرقام حسابك"><option value="">اختر من أرقام حسابك</option>${ns.map(n => `<option value="${E(n.number)}">${E(n.number)}</option>`).join('')}</select></label></div>` : '';
     const body = x.lookup
       ? `<section class="card pad inquiry-result-card">${resultView(x.lookup)}<div style="margin-top:12px">${K.btn('بحث عن رقم آخر', 'search-again', '', '', 'search')}</div></section>`
-      : `<form id="number-search" class="card pad" data-form="number-search"><h3>البحث عن حالة الرقم في أمان</h3>${K.fields(K.field({ id: 'search-number-input', name: 'number', label: 'رقم الهاتف', required: true, inputmode: 'numeric', dir: 'ltr', placeholder: 'أدخل رقم الهاتف' }))}${picker}<p id="search-company" class="note">أدخل الرقم للتعرف على الشركة إن أمكن.</p><button type="submit" class="btn primary">البحث</button></form>`;
+      : `<form id="number-search" class="card pad" data-form="number-search" novalidate><h3>البحث عن حالة الرقم في أمان</h3>${K.fields(K.field({ id: 'search-number-input', name: 'number', label: 'رقم الهاتف', required: true, inputmode: 'numeric', dir: 'ltr', placeholder: 'أدخل رقم الهاتف' }))}${picker}<p id="search-company" class="note">أدخل الرقم للتعرف على الشركة إن أمكن.</p><button type="submit" class="btn primary" data-submit>البحث</button></form>`;
     return { chrome: 'tabs', html: `${lead}<h1 class="display">مرحبًا، ${E(c.name)}</h1><p class="lede">${ns.length ? `لديك ${N(ns.length)} ${ns.length === 1 ? 'رقم' : 'أرقام'} في حسابك.` : 'ابحث عن حالة أي رقم أو أضف أرقامك من قسم الأرقام.'}</p>${body}` };
   }
 
@@ -127,7 +128,7 @@
   function buy(d, c) {
     const packs = d.packages.filter(x => x.active !== false), methods = d.paymentMethods.filter(x => x.active !== false);
     const hero = `<div class="hero"><small>رصيد أمان الحالي</small><div class="big">${N(D.balance(c.id, d))}<em>نقطة</em></div></div>`;
-    const form = `<form id="purchase" data-form="purchase">${K.fields(
+    const form = `<form id="purchase" data-form="purchase" novalidate>${K.fields(
       K.field({ id: 'packageId', name: 'packageId', label: 'باقة النقاط', type: 'select', required: true, options: packs.length ? packs.map(p => [p.id, `${p.name} — ${N(p.points)} نقطة · ${N(p.price)} ر.ي`]) : [['', 'لا توجد باقات متاحة']] }) +
       K.field({ id: 'paymentId', name: 'paymentId', label: 'وسيلة الدفع', type: 'select', required: true, options: methods.length ? methods.map(m => [m.id, m.name]) : [['', 'لا توجد وسائل دفع متاحة']] }) +
       K.field({ id: 'reference', name: 'reference', label: 'مرجع التحويل', required: true, placeholder: 'أدخل مرجع التحويل' }))}
@@ -166,7 +167,7 @@
     } else if (kind === 'request') {
       const x = d.purchaseRequests.find(v => v.id === id && v.customerId === c.id); if (!x) return null;
       title = 'تفاصيل طلب النقاط';
-      rows = [['الباقة', E(x.packageSnapshot.name)], ['النقاط', N(x.packageSnapshot.points)], ['القيمة المالية', `${N(x.packageSnapshot.price)} ر.ي`], ['وسيلة الدفع', E(x.paymentMethodSnapshot.name)], ['المرجع', E(x.paymentReference)], ['الحالة', label(x.status)], ['تاريخ الطلب', U.date(x.createdAt)], ['تاريخ المراجعة', U.date(x.reviewedAt)], ['ملاحظة الإدارة', E(x.reviewNote || '—')]];
+      rows = [['رقم الطلب', `<span class="ltr">${E(x.id)}</span>${K.copyBtn(x.id, 'رقم الطلب')}`], ['الباقة', E(x.packageSnapshot.name)], ['النقاط', N(x.packageSnapshot.points)], ['القيمة المالية', `${N(x.packageSnapshot.price)} ر.ي`], ['وسيلة الدفع', E(x.paymentMethodSnapshot.name)], ['المرجع', `<span class="ltr">${E(x.paymentReference)}</span>${K.copyBtn(x.paymentReference, 'المرجع')}`], ['الحالة', label(x.status)], ['تاريخ الطلب', U.date(x.createdAt)], ['تاريخ المراجعة', U.date(x.reviewedAt)], ['ملاحظة الإدارة', E(x.reviewNote || '—')]];
     } else if (kind === 'subscription') {
       const x = d.subscriptions.find(v => v.id === id && v.customerId === c.id); if (!x) return null;
       const n = numberFor(x.numberId);

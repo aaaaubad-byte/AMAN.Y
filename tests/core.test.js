@@ -245,7 +245,7 @@ test('حد كلمة المرور الأدنى أربع خانات في تسجي�
   const root=path.join(__dirname,'..','apps');
   const customer=['customer.js','customer-screens.js'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n');
   const admin=adminSrc();
-  assert.match(customer,/minlength=\"4\"/);
+  assert.match(customer,/minlength=\"4\"|minlength: 4/); // U1: الحقل يُولَّد عبر K.authField (يُفحص الناتج في customer.test.js)
   assert.match(customer,/password\.length\s*<\s*4/);
   assert.match(customer,/كلمة المرور يجب ألا تقل عن 4 خانات/);
   assert.match(customer,/كلمة المرور \(4 خانات فأكثر\)/);

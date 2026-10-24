@@ -31,7 +31,9 @@
     building: '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M10 21v-3h4v3"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     receipt: '<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
-    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>'
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeoff: '<path d="M3 3l18 18M10.6 6.2A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.6 7.6C3.9 9.3 2 12 2 12s3.6 6 10 6c1.7 0 3.2-.4 4.5-1M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
   };
   const ico = (n, cls = '') => `<svg class="${esc(cls)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || P.doc}</svg>`;
   const tile = (n, tone = '') => `<span class="ico ${tone}">${ico(n)}</span>`;
@@ -54,6 +56,8 @@
   const card = rows => `<div class="card">${rows.join('')}</div>`;
   const kv = rows => `<div class="kv">${rows.map(([k, v, s]) => `<div><span>${esc(k)}</span><b class="${s ? 'strong' : ''}">${v}</b></div>`).join('')}</div>`;
   const empty = (t, icon = 'inbox', title = '') => `<div class="card empty">${tile(icon)}${title ? `<b>${esc(title)}</b>` : ''}<p>${esc(t)}</p></div>`;
+  // زر نسخ صغير (البند 16): النتيجة تظهر في إشعار قصير من غلاف التطبيق
+  const copyBtn = (value, what) => `<button type="button" class="copy-mini" data-act="copy" data-copy="${esc(value)}" data-label="${esc(what)}" aria-label="نسخ ${esc(what)}">${ico('copy')}</button>`;
   const note = (t, attrs = '') => `<p class="note" ${attrs}>${esc(t)}</p>`;
   const callout = (icon, title, text, dark = false, attrs = '') => `<div class="callout ${dark ? 'dark' : ''}" ${attrs}>${tile(icon)}<div><b>${esc(title)}</b>${text}</div></div>`;
 
@@ -68,9 +72,57 @@
     const id = o.id || 'f_' + o.name, v = o.value ?? '', req = o.required ? 'required' : '';
     let ctl;
     if (o.type === 'select') ctl = `<select id="${id}" name="${esc(o.name)}" ${req}>${o.options.map(([k, l]) => `<option value="${esc(k)}" ${String(k) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-    else ctl = `<input id="${id}" name="${esc(o.name)}" type="${o.type || 'text'}" value="${esc(v)}" ${req} ${o.minlength ? `minlength="${o.minlength}"` : ''} ${o.inputmode ? `inputmode="${o.inputmode}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} ${o.dir ? `dir="${o.dir}"` : ''} autocomplete="${esc(o.autocomplete || 'off')}">`;
-    return `<div class="field"><label for="${id}">${esc(o.label)}</label>${ctl}${o.help ? `<small>${esc(o.help)}</small>` : ''}</div>`;
+    else ctl = `<input id="${id}" name="${esc(o.name)}" type="${o.type || 'text'}" value="${esc(v)}" ${req} ${o.minlength ? `minlength="${o.minlength}"` : ''} ${o.inputmode ? `inputmode="${o.inputmode}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} ${o.dir ? `dir="${o.dir}"` : ''} autocomplete="${esc(o.autocomplete || 'off')}" aria-describedby="${id}-err">`;
+    return `<div class="field"><label for="${id}">${esc(o.label)}</label>${ctl}${o.help ? `<small>${esc(o.help)}</small>` : ''}<small class="ferr hidden" id="${id}-err" role="alert"></small></div>`;
   };
+  // حقل في شاشات الدخول (خلفية سوداء) مع رسالة خطأ بجانبه؛ extra لمحتوى إضافي تحت الحقل
+  const authField = o => {
+    const row = `<input id="${o.id}" name="${esc(o.name)}" type="${o.type || 'text'}" ${o.minlength ? `minlength="${o.minlength}"` : ''} ${o.dir ? `dir="${o.dir}" style="text-align:right"` : ''} autocomplete="${esc(o.autocomplete || 'off')}" value="${esc(o.value || '')}" aria-describedby="${o.id}-err"${o.type === 'password' ? ' autocapitalize="off" spellcheck="false"' : ''}>`;
+    const eye = o.type === 'password' ? `<button type="button" class="eye" data-act="toggle-pass" data-target="${o.id}" aria-label="إظهار كلمة المرور" aria-pressed="false">${ico('eye')}</button>` : '';
+    return `<div class="afield"><label for="${o.id}">${esc(o.label)}</label><div class="afield-row">${row}${eye}</div>${o.extra || ''}<small class="ferr hidden" id="${o.id}-err" role="alert"></small></div>`;
+  };
+
+  /* ----- منطق بحت: قوة كلمة المرور والتحقق وربط الأخطاء بالحقول (البنود 2 و13) ----- */
+  // مؤشر استرشادي فقط: لا يغيّر الحد الأدنى المعتمد (4 خانات) ولا يفرض شروطًا أخرى
+  function passwordStrength(p) {
+    const s = String(p || '');
+    if (!s) return { level: 0, key: 'none', text: '' };
+    if (s.length < 4) return { level: 0, key: 'short', text: 'أقصر من الحد الأدنى (4 خانات)' };
+    const classes = [/\p{L}/u, /\d/, /[^\p{L}\d\s]/u].filter(r => r.test(s)).length;
+    const pts = (s.length >= 6 ? 1 : 0) + (s.length >= 8 ? 1 : 0) + (classes >= 2 ? 1 : 0) + (classes >= 3 ? 1 : 0);
+    if (pts <= 1) return { level: 1, key: 'weak', text: 'ضعيفة' };
+    if (pts <= 3) return { level: 2, key: 'fair', text: 'متوسطة' };
+    return { level: 3, key: 'good', text: 'جيدة' };
+  }
+  const strengthMeter = (id = 'pass-strength') => `<div class="strength" id="${id}" data-level="0" aria-live="polite"><i></i><i></i><i></i><span></span></div><small class="strength-note">مؤشر استرشادي. الحد الأدنى 4 خانات ولا تُفرض شروط أخرى.</small>`;
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // يعيد أول خطأ لكل حقل: [{ id, msg }]. القيم الأساسية تُفحص أيضًا في طبقة البيانات؛ هذا للعرض بجانب الحقل.
+  function validate(kind, v = {}) {
+    const out = [], seen = new Set(), t = x => String(x ?? '').trim();
+    const need = (id, ok, msg) => { if (!ok && !seen.has(id)) { seen.add(id); out.push({ id, msg }); } };
+    if (kind === 'login') {
+      need('l_email', t(v.email), 'أدخل البريد الإلكتروني.'); need('l_email', !t(v.email) || EMAIL_RE.test(t(v.email)), 'صيغة البريد الإلكتروني غير صحيحة.');
+      need('l_pass', String(v.password || '').length > 0, 'أدخل كلمة المرور.'); need('l_pass', !v.password || String(v.password).length >= 4, 'كلمة المرور يجب ألا تقل عن 4 خانات.');
+    } else if (kind === 'signup') {
+      need('s_name', t(v.name), 'أدخل الاسم.');
+      need('s_email', t(v.email), 'أدخل البريد الإلكتروني.'); need('s_email', !t(v.email) || EMAIL_RE.test(t(v.email)), 'صيغة البريد الإلكتروني غير صحيحة.');
+      need('s_pass', String(v.password || '').length > 0, 'أدخل كلمة المرور.'); need('s_pass', !v.password || String(v.password).length >= 4, 'كلمة المرور يجب ألا تقل عن 4 خانات.');
+      need('agree', v.agree === true, 'وافق على الشروط والأحكام للمتابعة.');
+    } else if (kind === 'purchase') {
+      need('packageId', t(v.packageId), 'اختر باقة النقاط.'); need('paymentId', t(v.paymentId), 'اختر وسيلة الدفع.'); need('reference', t(v.reference), 'أدخل مرجع التحويل.');
+    } else if (kind === 'add-number') need('newNumber', t(v.number), 'أدخل رقم الهاتف.');
+    else if (kind === 'number-search') need('search-number-input', t(v.number), 'أدخل رقم الهاتف.');
+    return out;
+  }
+  // أخطاء طبقة البيانات (رسائل نصية) تُوجَّه إلى الحقل المعني إن عُرف؛ وإلا تبقى في صندوق الخطأ العام
+  const FIELD_FOR = {
+    login: [[/البريد/, 'l_email'], [/بيانات الدخول|كلمة المرور/, 'l_pass']],
+    signup: [[/البريد/, 's_email'], [/كلمة المرور/, 's_pass'], [/الشروط/, 'agree']],
+    purchase: [[/مرجع/, 'reference'], [/الباقة|وسيلة الدفع/, 'packageId']],
+    'add-number': [[/./, 'newNumber']],
+    'number-search': [[/./, 'search-number-input']]
+  };
+  const fieldForError = (kind, msg) => ((FIELD_FOR[kind] || []).find(([re]) => re.test(String(msg || ''))) || [])[1] || '';
   const toggle = (id, label, checked, help = '') => `<label class="toggle"><span>${esc(label)}${help ? `<small>${esc(help)}</small>` : ''}</span><input class="switch" type="checkbox" role="switch" id="${esc(id)}" ${checked ? 'checked' : ''}></label>`;
   const fields = html => `<div class="fields">${html}</div>`;
 
@@ -78,5 +130,5 @@
   const sheet = (title, body, foot = '') =>
     `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><button type="button" class="tile-btn" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
 
-  root.AmanCustomerKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, note, callout, toolbar, btn, submitBtn, field, toggle, fields, sheet };
+  root.AmanCustomerKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, copyBtn, note, callout, toolbar, btn, submitBtn, field, authField, passwordStrength, strengthMeter, validate, fieldForError, toggle, fields, sheet };
 })(window);

@@ -111,7 +111,12 @@
     if (!snap.c) {
       screen.className = 'screen auth auth-screen';
       screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials(), DEMO) : S.signup();
-      barEl.innerHTML = ''; tabbar.hidden = true; ui.view = null; return;
+      barEl.innerHTML = ''; tabbar.hidden = true; ui.view = null;
+      { // تركيز تلقائي على أول حقل فارغ في شاشات الدخول (البند 14)
+        const els = [...screen.querySelectorAll('input:not([type=checkbox]):not([type=hidden])')];
+        (els.find(i => !i.value) || els[0])?.focus({ preventScroll: true });
+      }
+      return;
     }
     const v = S.build(ui.route, snap.d, snap.c, ctxNow());
     ui.view = v;
@@ -156,12 +161,49 @@
   }
   const clearError = () => document.querySelectorAll('#form-error').forEach(e => e.classList.add('hidden'));
   const lockables = () => document.querySelectorAll('[data-submit],.btn[data-confirm]');
-  async function run(fn) {
+
+  /* ----- أخطاء بجانب الحقول (البند 13) ----- */
+  const fieldBox = id => document.getElementById(id)?.closest('.field,.afield,.remember');
+  function setFieldError(id, msg) {
+    const input = document.getElementById(id), box = document.getElementById(id + '-err');
+    if (!input || !box) return false;
+    box.textContent = msg; box.classList.remove('hidden');
+    input.setAttribute('aria-invalid', 'true'); fieldBox(id)?.classList.add('invalid');
+    return true;
+  }
+  function clearFieldError(id) {
+    const input = document.getElementById(id), box = document.getElementById(id + '-err');
+    if (box) { box.textContent = ''; box.classList.add('hidden'); }
+    input?.removeAttribute('aria-invalid'); fieldBox(id)?.classList.remove('invalid');
+  }
+  const clearFieldErrors = () => document.querySelectorAll('.ferr').forEach(b => { if (b.id) clearFieldError(b.id.replace(/-err$/, '')); });
+  const focusField = id => { const el = document.getElementById(id); el?.focus?.({ preventScroll: false }); el?.scrollIntoView?.({ block: 'nearest' }); };
+  function showFailure(err, kind) {
+    const msg = err?.message || 'تعذرت العملية ولم تُحفظ تغييرات.', id = K.fieldForError(kind, msg);
+    if (id && setFieldError(id, msg)) { focusField(id); return; }
+    showError(msg);
+  }
+
+  /* ----- تعطيل الأزرار أثناء التنفيذ مع مؤشر تقدم (البند 26): لا يُعاد تمكين زر عُطّل أصلًا ----- */
+  async function run(fn, kind) {
     if (ui.busy) return false;
-    ui.busy = true; clearError(); lockables().forEach(b => b.disabled = true);
+    ui.busy = true; clearError(); clearFieldErrors();
+    const locked = [...lockables()].filter(b => !b.disabled);
+    locked.forEach(b => { b.disabled = true; b.classList.add('busy'); b.setAttribute('aria-busy', 'true'); });
     try { await fn(); return true; }
-    catch (err) { showError(err?.message || 'تعذرت العملية ولم تُحفظ تغييرات.'); return false; }
-    finally { ui.busy = false; lockables().forEach(b => b.disabled = false); }
+    catch (err) { showFailure(err, kind); return false; }
+    finally { ui.busy = false; locked.forEach(b => { b.disabled = false; b.classList.remove('busy'); b.removeAttribute('aria-busy'); }); }
+  }
+
+  /* ----- النسخ مع إشعار بالنتيجة (البند 16) ----- */
+  async function copyText(value, what) {
+    value = String(value ?? '');
+    if (!value) { toast(`لا يوجد ${what} للنسخ.`, true); return; }
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else { const t = document.createElement('textarea'); t.value = value; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); if (!ok) throw new Error('copy'); }
+      toast(`تم نسخ ${what}.`);
+    } catch { toast(`تعذر النسخ. انسخه يدويًا: ${value}`, true); }
   }
   const errBox = '<div id="form-error" class="form-error hidden" role="alert"></div>';
   const textSheet = (title, text) => openSheet(title, `<p class="sheet-text">${E(text)}</p>`, K.btn('إغلاق', 'sheet-close', 'primary'));
@@ -176,7 +218,7 @@
     openSheet(v.title, v.body, v.foot);
   }
   function addNumberSheet() {
-    openSheet('إضافة رقم إلى أرقامي', `<form id="add-number-form" data-form="add-number">${K.fields(K.field({ id: 'newNumber', name: 'number', label: 'رقم الهاتف', type: 'tel', required: true, inputmode: 'numeric', dir: 'ltr', autocomplete: 'tel-national' }))}<p id="modal-company" class="note">أدخل الرقم لتحديد شركة الاتصالات</p>${errBox}</form><p class="note">إضافة الرقم لا تخصم نقاطًا ولا تفعّل الحماية.</p>`, K.submitBtn('إضافة الرقم', 'add-number-form') + K.btn('إلغاء', 'sheet-close'));
+    openSheet('إضافة رقم إلى أرقامي', `<form id="add-number-form" data-form="add-number" novalidate>${K.fields(K.field({ id: 'newNumber', name: 'number', label: 'رقم الهاتف', type: 'tel', required: true, inputmode: 'numeric', dir: 'ltr', autocomplete: 'tel-national' }))}<p id="modal-company" class="note">أدخل الرقم لتحديد شركة الاتصالات</p>${errBox}</form><p class="note">إضافة الرقم لا تخصم نقاطًا ولا تفعّل الحماية.</p>`, K.submitBtn('إضافة الرقم', 'add-number-form') + K.btn('إلغاء', 'sheet-close'));
   }
   function protectionPathSheet(number, companyId, operation) {
     const d = data(), packs = (d.protectionPackages || []).filter(p => p.companyId === companyId && p.active !== false);
@@ -271,11 +313,14 @@
           const c = data().customers?.[0];
           textSheet('المساعدة', `معرّف الحساب ${c?.accountId || c?.id || ''} هو الرمز المستخدم للتعريف بحسابك في هذا النموذج المحلي.`); return;
         }
-        case 'copy-account-id': {
-          const c = data().customers[0], value = c?.accountId || c?.id || '';
-          if (navigator.clipboard?.writeText) { try { await navigator.clipboard.writeText(value); toast('تم نسخ معرّف الحساب.'); } catch { toast(`معرّف الحساب: ${value}`); } }
-          else toast(`معرّف الحساب: ${value}`);
-          return;
+        case 'copy-account-id': { const c = data().customers[0]; await copyText(c?.accountId || c?.id || '', 'معرّف الحساب'); return; }
+        case 'copy': await copyText(b.dataset.copy, b.dataset.label || 'القيمة'); return;
+        case 'toggle-pass': {
+          const input = document.getElementById(b.dataset.target); if (!input) return;
+          const show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          b.setAttribute('aria-pressed', String(show)); b.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+          b.innerHTML = K.ico(show ? 'eyeoff' : 'eye'); input.focus(); return;
         }
         case 'logout-open': logoutSheet(); return;
         case 'logout-confirm':
@@ -289,6 +334,10 @@
   document.addEventListener('submit', async e => {
     e.preventDefault();
     const f = e.target, kind = f.dataset.form, fd = new FormData(f);
+    if (ui.busy) return;
+    clearFieldErrors();
+    const bad = K.validate(kind, { ...Object.fromEntries(fd.entries()), agree: !!$('#agree')?.checked });
+    if (bad.length) { bad.forEach(x => setFieldError(x.id, x.msg)); focusField(bad[0].id); return; }
     await run(async () => {
       switch (kind) {
         case 'login': {
@@ -339,13 +388,18 @@
         case 'purchase': await D.createPurchase(ui.id, fd.get('packageId'), fd.get('paymentId'), fd.get('reference')); render(); toast('تم إرسال الطلب للمراجعة.'); return;
         default: throw new Error('تعذر العثور على النموذج.');
       }
-    });
+    }, kind);
   });
 
   /* ===================== البحث والفلترة والإعدادات ===================== */
   document.addEventListener('input', e => {
     const t = e.target;
     if (t.id === 'q') { ui.q = t.value; refreshList(); return; }
+    if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); // التعديل يزيل خطأ الحقل
+    if (t.id === 's_pass') { // مؤشر قوة كلمة المرور: استرشادي فقط
+      const m = $('#pass-strength'), s = K.passwordStrength(t.value);
+      if (m) { m.dataset.level = String(s.level); m.dataset.key = s.key; m.querySelector('span').textContent = s.text; }
+    }
     if (t.id === 'newNumber' || t.id === 'search-number-input') {
       const co = D.companyFor(t.value, D.read()), el = $(t.id === 'newNumber' ? '#modal-company' : '#search-company');
       if (el) el.textContent = co ? `شركة الاتصالات: ${co.name}` : (t.value.trim() ? 'لم يتم التعرف على شركة الاتصالات من بادئة الرقم' : (t.id === 'newNumber' ? 'أدخل الرقم لتحديد شركة الاتصالات' : 'أدخل الرقم للتعرف على الشركة إن أمكن.'));
@@ -353,13 +407,25 @@
   });
   document.addEventListener('change', e => {
     const t = e.target;
+    if (t.id === 'agree' || t.id === 'packageId' || t.id === 'paymentId') clearFieldError(t.id);
     if (t.id === 'flt') { ui.co = t.value; refreshList(); return; }
     if (t.id === 'quickNumber') { const input = $('#search-number-input'); if (input) { input.value = t.value; input.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     if (t.id === 'paymentId') { const m = data().paymentMethods.find(x => x.id === t.value); const el = $('#paymentInstructions'); if (el) el.textContent = m?.instructions || 'لا توجد تعليمات'; return; }
     if (t.id === 'theme') { localStorage.setItem('aman.customer.theme', t.value); localStorage.setItem('aman.customer.dark', t.value === 'dark' ? '1' : '0'); applyTheme(); return; }
     if (t.id === 'notifications-enabled') { localStorage.setItem(`aman.customer.notifications.${ui.id}`, t.checked ? '1' : '0'); render(); toast(t.checked ? 'تم تفعيل تنبيه الإشعارات المحلي.' : 'تم إيقاف تنبيه الإشعارات المحلي.'); }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); } });
+  /* اختصارات لوحة المفاتيح (البند 15): Esc يغلق النافذة؛ Enter يرسل فقط عند اكتمال الحقول المطلوبة
+     وإلا ينتقل إلى أول حقل ناقص، ولا يرسل أثناء تنفيذ عملية سابقة. */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); return; }
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'button', 'submit'].includes(t.type)) return;
+    const form = t.closest('form[data-form]'); if (!form) return;
+    if (ui.busy) { e.preventDefault(); return; }
+    const missing = [...form.querySelectorAll('input:not([type=checkbox]):not([type=hidden]),select')].find(c => (c.required || ['login', 'signup'].includes(form.dataset.form)) && !String(c.value).trim());
+    if (missing && missing !== t) { e.preventDefault(); missing.focus(); }
+  });
 
   // تغيّر المخزن من تبويب آخر (مثل الإدارة): حدّث الرأس دائمًا، وأعد بناء الشاشة فقط إن لم يكن العميل يكتب أو في نافذة مفتوحة
   window.addEventListener('storage', e => {

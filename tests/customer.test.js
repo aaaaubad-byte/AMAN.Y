@@ -157,3 +157,83 @@ test('أمان: كلمات المرور PBKDF2 بملح وتُرقّى التج�
   const html = S.operationDetail(d, 'request', all.purchaseRequests[0].id, d.customers[0]).body + S.build('orders', d, d.customers[0], x({ id })).html;
   assert.doesNotMatch(html, /<img src=x/);
 });
+
+/* ===== U1-أ: أساسيات النماذج (البنود 1 و2 و13 و14 و15 و16 و26) ===== */
+const K = AmanCustomerKit;
+
+test('U1 (2): مؤشر قوة كلمة المرور استرشادي ولا يغيّر الحد الأدنى (4 خانات)', () => {
+  assert.equal(K.passwordStrength('').key, 'none');
+  assert.equal(K.passwordStrength('abc').key, 'short');
+  assert.equal(K.passwordStrength('1234').key, 'weak');
+  assert.equal(K.passwordStrength('aman1234').key, 'fair');
+  assert.equal(K.passwordStrength('Aman@1234x').key, 'good');
+  assert.equal(K.passwordStrength('كلمةسر9').key, 'fair', 'الحروف العربية تُحتسب حروفًا');
+  assert.equal(K.passwordStrength('كلمة-سر9').key, 'good', 'ثلاث فئات وثماني خانات');
+  assert.match(S.login({ email: '', enabled: false }), /minlength="4"/);
+  assert.match(S.signup(), /minlength="4"/);
+  assert.match(S.signup(), /id="pass-strength"/);
+  assert.match(S.signup(), /الحد الأدنى 4 خانات ولا تُفرض شروط أخرى/);
+});
+
+test('U1 (1): حقول كلمة المرور في الدخول والتسجيل بزر إظهار/إخفاء متاح ومُعنوَن', () => {
+  for (const html of [S.login({ email: '', enabled: false }), S.signup()]) {
+    assert.match(html, /data-act="toggle-pass" data-target="(l_pass|s_pass)"/);
+    assert.match(html, /aria-label="إظهار كلمة المرور" aria-pressed="false"/);
+    assert.match(html, /type="password"/);
+  }
+});
+
+test('U1 (13): التحقق يعيد خطأً واحدًا لكل حقل ويُربط بحقله، وأخطاء طبقة البيانات تُوجَّه للحقل المعني', () => {
+  assert.deepEqual(K.validate('login', { email: 'a@b.co', password: 'abcd' }), []);
+  assert.deepEqual(K.validate('login', { email: '', password: '' }).map(e => e.id), ['l_email', 'l_pass']);
+  assert.equal(K.validate('login', { email: 'x', password: 'abcd' })[0].msg, 'صيغة البريد الإلكتروني غير صحيحة.');
+  assert.equal(K.validate('login', { email: 'a@b.co', password: 'abc' })[0].msg, 'كلمة المرور يجب ألا تقل عن 4 خانات.');
+  assert.deepEqual(K.validate('signup', { name: '', email: 'a@b.co', password: 'abcd', agree: false }).map(e => e.id), ['s_name', 'agree']);
+  assert.deepEqual(K.validate('purchase', { packageId: 'p', paymentId: 'm', reference: '  ' }).map(e => e.id), ['reference']);
+  assert.deepEqual(K.validate('add-number', { number: '' }).map(e => e.id), ['newNumber']);
+  assert.deepEqual(K.validate('number-search', { number: '' }).map(e => e.id), ['search-number-input']);
+  assert.equal(K.fieldForError('purchase', 'مرجع الدفع استُخدم في طلب سابق بالفعل.'), 'reference');
+  assert.equal(K.fieldForError('login', 'البريد الإلكتروني غير مسجل.'), 'l_email');
+  assert.equal(K.fieldForError('login', 'بيانات الدخول غير صحيحة.'), 'l_pass');
+  assert.equal(K.fieldForError('signup', 'البريد مسجل بالفعل.'), 's_email');
+  assert.equal(K.fieldForError('number-search', 'تعذر تحديد شركة أو طول صالح لهذا الرقم.'), 'search-number-input');
+  assert.equal(K.fieldForError('purchase', 'خطأ عام غير معروف'), '', 'ما لا يُعرف حقله يبقى في الصندوق العام');
+  assert.equal(K.fieldForError('login', 'فشل حفظ البيانات: المساحة غير كافية'), '', 'خطأ نظام لا يُنسب لحقل');
+});
+
+test('U1 (13): كل نموذج يحمل novalidate ومكان خطأ لكل حقل، وحقل الباقة والمرجع مرتبطان بوصف الخطأ', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0];
+  const buy = S.build('buy', d, c, x({ id: c.id })).html;
+  assert.match(buy, /<form id="purchase" data-form="purchase" novalidate>/);
+  for (const id of ['packageId', 'paymentId', 'reference']) assert.match(buy, new RegExp(`id="${id}-err" role="alert"`));
+  assert.match(buy, /aria-describedby="reference-err"/);
+  const login = S.login({ email: '', enabled: false }), signup = S.signup();
+  assert.match(login, /<form id="login" data-form="login" novalidate>/);
+  assert.match(signup, /<form id="signup" data-form="signup" novalidate>/);
+  for (const id of ['l_email', 'l_pass']) assert.match(login, new RegExp(`id="${id}-err"`));
+  for (const id of ['s_name', 's_email', 's_pass', 'agree']) assert.match(signup, new RegExp(`id="${id}-err"`));
+  assert.match(S.build('home', d, c, x({ id: c.id })).html, /data-form="number-search" novalidate/);
+});
+
+test('U1 (16): نسخ رقم الطلب والمرجع في تفاصيل الطلب بنصٍّ مهرَّب', () => {
+  const all = seed(), r = all.purchaseRequests[0];
+  r.paymentReference = '<b>REF"1</b>';
+  D.setStorageForTests(store(JSON.stringify(all)));
+  const d = D.readForCustomer(r.customerId), body = S.operationDetail(d, 'request', r.id, d.customers[0]).body;
+  assert.match(body, new RegExp(`data-copy="${r.id}" data-label="رقم الطلب"`));
+  assert.match(body, /data-act="copy" data-copy="&lt;b&gt;REF&quot;1&lt;\/b&gt;" data-label="المرجع"/);
+  assert.doesNotMatch(body, /<b>REF/);
+  assert.match(body, /aria-label="نسخ المرجع"/);
+});
+
+test('U1 (14 و15 و26): ربط الغلاف: تركيز تلقائي، حماية Enter، تعطيل الأزرار بمؤشر دون إعادة تمكين زر معطّل أصلًا', () => {
+  const js = read('customer.js'), css = read('customer.css');
+  assert.match(js, /\(els\.find\(i => !i\.value\) \|\| els\[0\]\)\?\.focus/, 'تركيز أول حقل فارغ في شاشات الدخول');
+  assert.match(js, /e\.key !== 'Enter'/);assert.match(js, /if \(missing && missing !== t\) \{ e\.preventDefault\(\); missing\.focus\(\); \}/);
+  assert.match(js, /if \(ui\.busy\) \{ e\.preventDefault\(\); return; \}/, 'لا إرسال أثناء عملية جارية');
+  assert.match(js, /const locked = \[\.\.\.lockables\(\)\]\.filter\(b => !b\.disabled\)/);
+  assert.match(js, /classList\.add\('busy'\)/);assert.match(js, /setAttribute\('aria-busy', 'true'\)/);
+  assert.match(css, /\.btn\.busy::after/);assert.match(css, /prefers-reduced-motion:reduce\)\{\.btn\.busy::after/);
+  for (const html of [S.login({ email: '', enabled: false }), S.signup()]) assert.match(html, /type="submit" data-submit/);
+});
