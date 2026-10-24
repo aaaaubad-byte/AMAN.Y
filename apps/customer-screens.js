@@ -91,7 +91,7 @@
     const list = () => {
       const rows = all.filter(n => matches(d, n, x));
       if (!all.length) return K.empty('أضف رقمك الأول ثم فعّل حمايته من تفاصيله.', 'numbers', 'لا توجد أرقام مضافة بعد');
-      if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search');
+      if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
       return K.card(rows.map(n => numberRow(d, n, c.id)));
     };
     const tool = all.length ? K.toolbar('بحث برقم الهاتف', x.q, [['', 'كل الشركات'], ...companyNames(d, all).map(n => [n, n])], x.co || '') : '';
@@ -101,8 +101,8 @@
     const all = owned(d, c.id).filter(n => n.radar && liveSub(d, n, c.id));
     const list = () => {
       const rows = all.filter(n => matches(d, n, x));
-      if (!all.length) return K.empty('افتح تفاصيل رقم ذي اشتراك فعال لإضافته إلى الرادار.', 'radar', 'لا توجد أرقام فعالة في الرادار');
-      if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search');
+      if (!all.length) return K.empty('افتح تفاصيل رقم ذي اشتراك فعال لإضافته إلى الرادار.', 'radar', 'لا توجد أرقام فعالة في الرادار', K.btn('عرض أرقامي', 'go', '', 'data-to="numbers"', 'numbers'));
+      if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
       return `<div class="list">${rows.map(n => `<div class="card">${numberRow(d, n, c.id)}<div class="rowfoot">${K.btn('إيقاف المتابعة', 'radar-remove', 'small', `data-id="${E(n.id)}"`)}</div></div>`).join('')}</div>`;
     };
     const tool = all.length ? K.toolbar('بحث برقم الهاتف', x.q, [['', 'كل الشركات'], ...companyNames(d, all).map(n => [n, n])], x.co || '') : '';
@@ -139,12 +139,12 @@
   function points(d, c) {
     const rows = d.pointTransactions.filter(t => t.customerId === c.id).sort(byNew);
     const hero = `<div class="hero"><small>الرصيد الحالي</small><div class="big">${N(D.balance(c.id, d))}<em>نقطة</em></div></div>`;
-    const list = rows.length ? K.card(rows.map(x => K.row({ icon: x.type === 'credit' ? 'wallet' : 'repeat', tone: x.type === 'credit' ? 'ok' : '', title: `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة · ${x.type === 'credit' ? 'إضافة' : 'خصم'}`, sub: E(x.description || x.source), sub2: U.date(x.createdAt), act: 'operation-detail', attrs: `data-kind="points" data-id="${E(x.id)}"` }))) : K.empty('لا توجد حركات نقاط.', 'wallet');
+    const list = rows.length ? K.card(rows.map(x => K.row({ icon: x.type === 'credit' ? 'wallet' : 'repeat', tone: x.type === 'credit' ? 'ok' : '', title: `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة · ${x.type === 'credit' ? 'إضافة' : 'خصم'}`, sub: E(x.description || x.source), sub2: U.date(x.createdAt), act: 'operation-detail', attrs: `data-kind="points" data-id="${E(x.id)}"` }))) : K.empty('تظهر هنا إضافة النقاط بعد اعتماد طلب الشراء وخصمها عند عمليات الحماية.', 'wallet', 'لا توجد حركات نقاط بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'));
     return withBar('رصيد النقاط وحركتها', '', hero + K.section('الحركات') + list, { tab: 'account' });
   }
   function orders(d, c) {
     const rows = d.purchaseRequests.filter(x => x.customerId === c.id).sort(byNew);
-    return withBar('طلبات شراء النقاط', '', rows.length ? K.card(rows.map(r => K.row({ icon: 'receipt', title: r.packageSnapshot.name, sub: `${N(r.packageSnapshot.points)} نقطة · ${N(r.packageSnapshot.price)} ر.ي`, sub2: `${E(r.paymentReference)} · ${U.date(r.createdAt)}`, pill: K.pill(label(r.status), TONE[r.status] || ''), act: 'operation-detail', attrs: `data-kind="request" data-id="${E(r.id)}"` }))) : K.empty('لا توجد طلبات بعد.', 'receipt'), { tab: 'buy' });
+    return withBar('طلبات شراء النقاط', '', rows.length ? K.card(rows.map(r => K.row({ icon: 'receipt', title: r.packageSnapshot.name, sub: `${N(r.packageSnapshot.points)} نقطة · ${N(r.packageSnapshot.price)} ر.ي`, sub2: `${E(r.paymentReference)} · ${U.date(r.createdAt)}`, pill: K.pill(label(r.status), TONE[r.status] || ''), act: 'operation-detail', attrs: `data-kind="request" data-id="${E(r.id)}"` }))) : K.empty('أرسل طلب شراء نقاط وستتابع حالته هنا.', 'receipt', 'لا توجد طلبات بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card')), { tab: 'buy' });
   }
   function operations(d, c) {
     const rows = [
@@ -155,7 +155,7 @@
     ].sort(byNew);
     const title = x => x.kind === 'protection' ? `${OP_LABEL[x.type] || 'عملية حماية'}${x.packageSnapshot?.name ? ' — ' + x.packageSnapshot.name : ''}` : (x.description || x.packageSnapshot?.name || (x.kind === 'subscription' ? 'اشتراك حماية' : 'طلب نقاط'));
     const icon = { points: 'wallet', request: 'receipt', subscription: 'shield', protection: 'shield' };
-    const list = rows.length ? K.card(rows.map(x => K.row({ icon: icon[x.kind], title: title(x), sub: U.date(x.createdAt), val: x.kind === 'points' ? `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة` : x.kind === 'request' ? '' : `${N(x.pointsCost)} نقطة`, pill: x.kind === 'request' ? K.pill(label(x.status), TONE[x.status] || '') : '', act: 'operation-detail', attrs: `data-kind="${x.kind}" data-id="${E(x.id)}"` }))) : K.empty('لا توجد عمليات مسجلة.', 'repeat');
+    const list = rows.length ? K.card(rows.map(x => K.row({ icon: icon[x.kind], title: title(x), sub: U.date(x.createdAt), val: x.kind === 'points' ? `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة` : x.kind === 'request' ? '' : `${N(x.pointsCost)} نقطة`, pill: x.kind === 'request' ? K.pill(label(x.status), TONE[x.status] || '') : '', act: 'operation-detail', attrs: `data-kind="${x.kind}" data-id="${E(x.id)}"` }))) : K.empty('يظهر هنا سجل نقاطك وطلباتك وعمليات الحماية.', 'repeat', 'لا توجد عمليات بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'));
     return withBar('العمليات', 'سجل نقاطك وطلباتك واشتراكاتك', list, { tab: 'operations' });
   }
   function operationDetail(d, kind, id, c) {
@@ -185,7 +185,7 @@
   /* ===================== الإشعارات والحساب ===================== */
   function notifications(d, c) {
     const ns = notices(d, c.id);
-    return withBar('الإشعارات', ns.some(n => !n.readAt) ? `${N(ns.filter(n => !n.readAt).length)} جديد` : '', ns.length ? K.card(ns.map(n => K.row({ icon: 'bell', tone: n.readAt ? '' : 'dark', title: n.title, sub: E(n.body), sub2: U.date(n.createdAt), pill: K.pill(n.readAt ? 'مقروء' : 'جديد', n.readAt ? '' : 'dark'), act: 'notice-open', attrs: `data-id="${E(n.id)}"` }))) : K.empty('لا توجد إشعارات.', 'bell'), { tab: 'home' });
+    return withBar('الإشعارات', ns.some(n => !n.readAt) ? `${N(ns.filter(n => !n.readAt).length)} جديد` : '', ns.length ? K.card(ns.map(n => K.row({ icon: 'bell', tone: n.readAt ? '' : 'dark', title: n.title, sub: E(n.body), sub2: U.date(n.createdAt), pill: K.pill(n.readAt ? 'مقروء' : 'جديد', n.readAt ? '' : 'dark'), act: 'notice-open', attrs: `data-id="${E(n.id)}"` }))) : K.empty('ستظهر هنا تحديثات طلباتك واشتراكاتك.', 'bell', 'لا توجد إشعارات'), { tab: 'home' });
   }
   function account(d, c) {
     const sub = D.isSubscriber(d, c.id);

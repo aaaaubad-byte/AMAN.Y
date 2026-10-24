@@ -101,7 +101,12 @@
   }
   function fatal(e) {
     $('#screen').className = 'screen'; $('#bar').innerHTML = ''; $('#tabbar').hidden = true;
-    $('#screen').innerHTML = `<div class="card empty" style="margin-top:40px">${K.tile('info', 'bad')}<b>تعذر تحميل البيانات</b><p>${E(e.message)}</p><p>لم تُستبدل البيانات المحفوظة.</p></div>`;
+    $('#screen').innerHTML = `<div class="card empty" style="margin-top:40px">${K.tile('info', 'bad')}<b>تعذر تحميل البيانات</b><p>${E(e.message)}</p><p>لم تُستبدل البيانات المحفوظة.</p><div class="empty-action">${K.btn('إعادة المحاولة', 'retry', 'primary')}</div></div>`;
+  }
+  // إعادة المحاولة (37): يظهر هيكل التحميل لحظة ثم تُعاد المحاولة؛ إن تكرر الفشل تعود شاشة الخطأ نفسها
+  function retryLoad() {
+    const screen = $('#screen'); screen.className = 'screen'; screen.innerHTML = K.skeleton(4);
+    setTimeout(() => render({ top: true }), 350);
   }
   function render(opt = {}) {
     let snap;
@@ -144,10 +149,16 @@
   }
 
   /* ===================== التنبيه والنوافذ ===================== */
-  function toast(text, bad = false) {
-    const e = $('#toast'); e.textContent = text; e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad);
+  /* إشعار قصير (58). undo = { fn, label? } للإجراءات غير المالية القابلة للعكس بأمان فقط (24)؛
+     يبقى التراجع متاحًا ما دام الإشعار ظاهرًا، ويُلغى بظهور أي إشعار آخر. */
+  function toast(text, bad = false, undo = null) {
+    const e = $('#toast'); clearTimeout(toast.t); ui.undo = undo;
+    e.replaceChildren(Object.assign(document.createElement('span'), { textContent: text }));
+    if (undo) e.append(Object.assign(document.createElement('button'), { type: 'button', className: 'toast-undo', textContent: undo.label || 'تراجع' }));
+    e.querySelector('.toast-undo')?.setAttribute('data-act', 'toast-undo');
+    e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad); e.classList.toggle('has-undo', !!undo);
     e.classList.toggle('up', !!$('#bar .actionbar')); e.classList.toggle('auth-toast', !ui.id);
-    clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hidden'), 3800);
+    toast.t = setTimeout(() => { e.classList.add('hidden'); ui.undo = null; }, undo ? 6500 : 3800);
   }
   function openSheet(title, body, foot) {
     ui.sheet = true; $('#sheetRoot').innerHTML = K.sheet(title, body, foot);
@@ -275,24 +286,32 @@
         case 'signup-view': ui.auth = 'signup'; render(); return;
         case 'login-view': ui.auth = 'login'; render(); return;
         case 'search-again': ui.lookup = null; render(); return;
+        case 'retry': retryLoad(); return;
+        case 'clear-filter': ui.q = ''; ui.co = ''; render(); return;
+        case 'toast-undo': {
+          const u = ui.undo; ui.undo = null; $('#toast').classList.add('hidden');
+          if (u) await run(async () => { await u.fn(); render(); toast('تم التراجع.'); });
+          return;
+        }
         case 'number-detail': openNumberDetail(id); return;
         case 'add-number-open': addNumberSheet(); return;
-        case 'add-search-number': await run(async () => { await D.addNumber(ui.id, b.dataset.number); ui.lookup = D.searchNumberStatus(ui.id, b.dataset.number); render(); toast('أُضيف الرقم إلى أرقامك دون إجراء بحث جديد أو تفعيل حماية.'); }); return;
+        case 'add-search-number': await run(async () => { await D.addNumber(ui.id, b.dataset.number); ui.lookup = D.searchNumberStatus(ui.id, b.dataset.number); render(); toast('أُضيف الرقم إلى أرقامك.'); }); return;
         case 'protection-path': protectionPathSheet(b.dataset.number, b.dataset.company, b.dataset.operation); return;
         case 'protection-review': protectionReviewSheet(b.dataset.number, b.dataset.company, b.dataset.operation); return;
         case 'protection-confirm': await run(async () => {
           const p = ui.pending; if (!p) throw new Error('انتهت صلاحية المراجعة؛ أعد المحاولة.');
           await D.performProtectionOperation(ui.id, p.number, p.packageId, p.operation, p.key);
-          ui.pending = null; closeSheet(); ui.lookup = null; render(); toast('نُفذت عملية الحماية وسُجل الخصم محليًا.');
+          ui.pending = null; closeSheet(); ui.lookup = null; render(); toast('تمت العملية وخُصمت النقاط.');
         }); return;
         case 'radar-toggle': await run(async () => {
           const n = ownedNumber(data(), id); if (!n) throw new Error('هذا الرقم غير موجود ضمن أرقام حسابك.');
-          await D.setRadar(ui.id, id, !n.radar);
-          closeSheet(); render(); toast('تم تحديث المتابعة.');
+          const was = !!n.radar;
+          await D.setRadar(ui.id, id, !was);
+          closeSheet(); render(); toast(was ? 'أُوقفت المتابعة.' : 'بدأت المتابعة.', false, { fn: () => D.setRadar(ui.id, id, was) });
         }); return;
         case 'radar-remove': await run(async () => {
           await D.setRadar(ui.id, id, false);
-          render(); toast('تم إيقاف المتابعة.');
+          render(); toast('أُوقفت المتابعة.', false, { fn: () => D.setRadar(ui.id, id, true) });
         }); return;
         case 'number-notifications': numberNotificationsSheet(id); return;
         case 'notice-open': {
@@ -381,10 +400,10 @@
           });
           ui.id = result.entityId; sessionStorage.setItem('aman.customer', ui.id);
           history.replaceState({ amanCustomer: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true });
-          toast('أُنشئ الحساب. الحساب الجديد ليس مشتركًا حتى اعتماد أول طلب نقاط.'); return;
+          toast('أُنشئ حسابك. تصبح مشتركًا بعد اعتماد أول طلب نقاط.'); return;
         }
         case 'number-search': ui.lookup = D.searchNumberStatus(ui.id, fd.get('number')); render(); return;
-        case 'add-number': await D.addNumber(ui.id, fd.get('number')); closeSheet(); render(); toast('أُضيف الرقم إلى أرقامك دون تفعيل حماية أو خصم نقاط.'); return;
+        case 'add-number': await D.addNumber(ui.id, fd.get('number')); closeSheet(); render(); toast('أُضيف الرقم إلى أرقامك.'); return;
         case 'purchase': await D.createPurchase(ui.id, fd.get('packageId'), fd.get('paymentId'), fd.get('reference')); render(); toast('تم إرسال الطلب للمراجعة.'); return;
         default: throw new Error('تعذر العثور على النموذج.');
       }
@@ -412,7 +431,11 @@
     if (t.id === 'quickNumber') { const input = $('#search-number-input'); if (input) { input.value = t.value; input.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     if (t.id === 'paymentId') { const m = data().paymentMethods.find(x => x.id === t.value); const el = $('#paymentInstructions'); if (el) el.textContent = m?.instructions || 'لا توجد تعليمات'; return; }
     if (t.id === 'theme') { localStorage.setItem('aman.customer.theme', t.value); localStorage.setItem('aman.customer.dark', t.value === 'dark' ? '1' : '0'); applyTheme(); return; }
-    if (t.id === 'notifications-enabled') { localStorage.setItem(`aman.customer.notifications.${ui.id}`, t.checked ? '1' : '0'); render(); toast(t.checked ? 'تم تفعيل تنبيه الإشعارات المحلي.' : 'تم إيقاف تنبيه الإشعارات المحلي.'); }
+    if (t.id === 'notifications-enabled') {
+      const key = `aman.customer.notifications.${ui.id}`, on = t.checked;
+      localStorage.setItem(key, on ? '1' : '0'); render();
+      toast(on ? 'فُعّل تنبيه الإشعارات.' : 'أُوقف تنبيه الإشعارات.', false, { fn: async () => localStorage.setItem(key, on ? '0' : '1') });
+    }
   });
   /* اختصارات لوحة المفاتيح (البند 15): Esc يغلق النافذة؛ Enter يرسل فقط عند اكتمال الحقول المطلوبة
      وإلا ينتقل إلى أول حقل ناقص، ولا يرسل أثناء تنفيذ عملية سابقة. */
@@ -435,6 +458,18 @@
     render();
   });
   window.addEventListener('pageshow', () => { if (!ui.sheet) render(); });
+
+  /* ===================== حالة الاتصال (البند 38) ===================== */
+  // التطبيق يعمل على بيانات هذا الجهاز؛ الشريط يوضّح الحالة فقط ولا يمنع أي عملية محلية
+  function netState(announce) {
+    const online = navigator.onLine !== false, bar = $('#netbar');
+    document.body.classList.toggle('offline', !online);
+    if (bar) { bar.classList.toggle('hidden', online); bar.textContent = online ? '' : 'لا يوجد اتصال بالإنترنت. بياناتك المحفوظة على هذا الجهاز ما زالت متاحة.'; }
+    if (announce && online) toast('عاد الاتصال بالإنترنت.');
+  }
+  window.addEventListener('online', () => netState(true));
+  window.addEventListener('offline', () => netState(false));
+  netState(false);
 
   /* ===================== الإقلاع ===================== */
   ui.route = ui.id ? hashRoute() : 'home';

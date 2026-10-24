@@ -237,3 +237,53 @@ test('U1 (14 و15 و26): ربط الغلاف: تركيز تلقائي، حماي
   assert.match(css, /\.btn\.busy::after/);assert.match(css, /prefers-reduced-motion:reduce\)\{\.btn\.busy::after/);
   for (const html of [S.login({ email: '', enabled: false }), S.signup()]) assert.match(html, /type="submit" data-submit/);
 });
+
+/* ===== U1-ب: الحالات والتغذية الراجعة (البنود 36 و37 و38 و39 و58 و24) ===== */
+test('U1 (39): الشاشات الفارغة تقدّم الخطوة التالية بزر مناسب، والبحث بلا نتائج يعرض مسح التصفية', () => {
+  const base = D.seedData(); base.customers.push({ id: 'c9', accountId: 'A9', name: 'جديد', email: 'n9@aman.test', status: 'active', isSubscriber: false, createdAt: new Date().toISOString() });
+  D.setStorageForTests(store(JSON.stringify(base)));
+  const d = D.readForCustomer('c9'), c = d.customers[0], v = r => S.build(r, d, c, x({ id: 'c9' })).html;
+  for (const r of ['orders', 'operations']) assert.match(v(r), /empty-action[^]*data-to="buy"/, r + ' يوجّه إلى شراء النقاط');
+  assert.match(v('radar'), /data-to="numbers"/);
+  assert.match(v('notifications'), /لا توجد إشعارات/);assert.doesNotMatch(v('notifications'), /empty-action/, 'الإشعارات إعلامية بلا إجراء');
+  assert.doesNotMatch(v('operations') + v('orders'), /undefined|\[object Object\]|NaN/);
+  assert.match(K.empty('سبب', 'inbox', 'عنوان', '<button>زر</button>'), /<b>عنوان<\/b><p>سبب<\/p><div class="empty-action"><button>زر<\/button><\/div>/);
+  assert.doesNotMatch(K.empty('سبب'), /empty-action/);
+  const all = seed(), id = 'cus-demo-subscriber', d2 = D.readForCustomer(id);
+  assert.match(S.build('numbers', d2, d2.customers[0], x({ id, q: 'لا-يوجد-رقم-كهذا' })).list(), /data-act="clear-filter"/);
+});
+
+test('U1 (36 و37): هيكل التحميل مُعلَن لقارئات الشاشة ويظهر قبل تحميل السكربت، وشاشة الخطأ تحوي إعادة المحاولة', () => {
+  const sk = K.skeleton(3);
+  assert.match(sk, /role="status" aria-busy="true" aria-label="جارٍ التحميل"/);
+  assert.equal((sk.match(/sk-row/g) || []).length, 3);
+  const html = read('customer.html'), css = read('customer.css'), js = read('customer.js');
+  assert.match(html, /<main id="screen"[^>]*><div class="skeleton" role="status" aria-busy="true"/, 'هيكل أولي بدل شاشة فارغة');
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)\{\.sk\{animation:none/);
+  assert.match(js, /K\.btn\('إعادة المحاولة', 'retry', 'primary'\)/);
+  assert.match(js, /case 'retry': retryLoad\(\)/);assert.match(js, /K\.skeleton\(4\)/);
+  assert.match(js, /لم تُستبدل البيانات المحفوظة/, 'الخطأ لا يستبدل البيانات');
+});
+
+test('U1 (38): شريط الاتصال الثابت يوضح الحالة دون منع العمليات المحلية', () => {
+  const html = read('customer.html'), js = read('customer.js'), css = read('customer.css');
+  assert.match(html, /<div id="netbar" class="netbar hidden" role="status"><\/div>/);
+  assert.match(js, /addEventListener\('offline'/);assert.match(js, /addEventListener\('online'/);
+  assert.match(js, /لا يوجد اتصال بالإنترنت\. بياناتك المحفوظة على هذا الجهاز ما زالت متاحة\./);
+  assert.match(js, /عاد الاتصال بالإنترنت/);
+  assert.match(css, /\.netbar\{flex:none/);
+  assert.doesNotMatch(js, /navigator\.onLine[^;]*throw/, 'الاتصال لا يمنع أي عملية');
+});
+
+test('U1 (58 و24): تراجع لثوانٍ للإجراءات غير المالية فقط (المتابعة وتنبيه الإشعارات)، وبلا تراجع للمالية', () => {
+  const js = read('customer.js'), lines = js.split('\n');
+  assert.match(js, /function toast\(text, bad = false, undo = null\)/);
+  assert.match(js, /case 'toast-undo'/);assert.match(js, /undo \? 6500 : 3800/);
+  assert.match(js, /setRadar\(ui\.id, id, true\) \}\)/, 'إيقاف المتابعة قابل للتراجع');
+  assert.match(js, /fn: \(\) => D\.setRadar\(ui\.id, id, was\)/, 'تبديل المتابعة يعيد الحالة السابقة');
+  assert.match(js, /fn: async \(\) => localStorage\.setItem\(key, on \? '0' : '1'\)/);
+  for (const needle of ['D.createPurchase', 'D.performProtectionOperation', 'D.addNumber'])
+    for (const l of lines.filter(l => l.includes(needle) && !l.includes('function'))) assert.doesNotMatch(l, /fn:/, `${needle}: لا تراجع للعمليات المالية/الحساسة`);
+  const longToasts = [...js.matchAll(/toast\('([^']+)'/g)].map(m => m[1]).filter(t => t.length > 60);
+  assert.deepEqual(longToasts, [], 'الإشعارات قصيرة');
+});

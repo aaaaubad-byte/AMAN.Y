@@ -206,6 +206,9 @@ body.dark .switch:checked::after{background:#0b0c0c}
 .toast.error{background:var(--bad);color:#fff}
 body.dark .toast.error{background:#8c2a22;color:#fff}
 .toast.up{bottom:calc(var(--tabbar) + 96px + env(safe-area-inset-bottom))}
+.toast.has-undo{display:flex;align-items:center;justify-content:center;gap:14px}
+.toast-undo{flex:none;min-height:40px;padding:0 6px;font-weight:700;text-decoration:underline;color:inherit}
+body.offline .screen{padding-top:12px}
 .toast.auth-toast{bottom:calc(24px + env(safe-area-inset-bottom))}
 
 /* ===== الدخول (خلفية سوداء كما في المرجع) ===== */
@@ -241,3 +244,13 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .auth .link{display:inline;color:#fff;text-decoration:underline;font-size:inherit}
 
 @media(max-width:360px){.display{font-size:24px}.hero .big{font-size:28px}.row{padding:12px}.row+.row::before{inset-inline-start:64px}}
+
+/* ===== شريط الاتصال (38) وهياكل التحميل (36) وإجراء الحالة الفارغة (39) ===== */
+.netbar{flex:none;padding:calc(8px + env(safe-area-inset-top)) var(--pad) 8px;background:var(--warn-bg);color:var(--warn);font-size:13px;line-height:1.6;text-align:center;border-bottom:1px solid var(--line)}
+.empty-action{display:grid;width:100%;max-width:260px;margin-top:6px}
+.skeleton{display:grid;gap:12px;padding-top:calc(6px + env(safe-area-inset-top))}
+.sk{border-radius:var(--r-card);background:linear-gradient(90deg,var(--tile) 25%,var(--line) 50%,var(--tile) 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+.sk-title{height:28px;width:55%;border-radius:10px;margin-bottom:6px}
+.sk-row{height:68px}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none;background:var(--tile)}}

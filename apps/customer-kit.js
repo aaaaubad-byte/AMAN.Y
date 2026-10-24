@@ -55,7 +55,10 @@
   }
   const card = rows => `<div class="card">${rows.join('')}</div>`;
   const kv = rows => `<div class="kv">${rows.map(([k, v, s]) => `<div><span>${esc(k)}</span><b class="${s ? 'strong' : ''}">${v}</b></div>`).join('')}</div>`;
-  const empty = (t, icon = 'inbox', title = '') => `<div class="card empty">${tile(icon)}${title ? `<b>${esc(title)}</b>` : ''}<p>${esc(t)}</p></div>`;
+  // حالة فارغة موحّدة (39): عنوان اختياري + سبب/توضيح + إجراء الخطوة التالية عند الحاجة (action: HTML زر جاهز)
+  const empty = (t, icon = 'inbox', title = '', action = '') => `<div class="card empty">${tile(icon)}${title ? `<b>${esc(title)}</b>` : ''}<p>${esc(t)}</p>${action ? `<div class="empty-action">${action}</div>` : ''}</div>`;
+  // هيكل تحميل (36): أشرطة رمادية بدل الشاشة الفارغة؛ يُخفى عن قارئات الشاشة مع إعلان الانشغال على الحاوية
+  const skeleton = (rows = 4) => `<div class="skeleton" role="status" aria-busy="true" aria-label="جارٍ التحميل"><div class="sk sk-title"></div>${Array.from({ length: rows }, () => '<div class="sk sk-row" aria-hidden="true"></div>').join('')}</div>`;
   // زر نسخ صغير (البند 16): النتيجة تظهر في إشعار قصير من غلاف التطبيق
   const copyBtn = (value, what) => `<button type="button" class="copy-mini" data-act="copy" data-copy="${esc(value)}" data-label="${esc(what)}" aria-label="نسخ ${esc(what)}">${ico('copy')}</button>`;
   const note = (t, attrs = '') => `<p class="note" ${attrs}>${esc(t)}</p>`;
@@ -130,5 +133,5 @@
   const sheet = (title, body, foot = '') =>
     `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><button type="button" class="tile-btn" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
 
-  root.AmanCustomerKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, copyBtn, note, callout, toolbar, btn, submitBtn, field, authField, passwordStrength, strengthMeter, validate, fieldForError, toggle, fields, sheet };
+  root.AmanCustomerKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, skeleton, copyBtn, note, callout, toolbar, btn, submitBtn, field, authField, passwordStrength, strengthMeter, validate, fieldForError, toggle, fields, sheet };
 })(window);
