@@ -153,7 +153,23 @@
     const b = $('#listbody'); if (!b || !ui.view?.list) return;
     try { const { d, c } = snapshot(); if (c) { b.innerHTML = S.build(ui.route, d, c, ctxNow()).list(); applyPaging(); } } catch (e) { fatal(e); }
   }
-  const ctxNow = () => ({ q: ui.q, co: ui.co, lookup: ui.lookup, theme: selectedTheme(), noticeDot: notificationsEnabled(), id: ui.id });
+  /* ----- الباقة ووسيلة الدفع المفضلتان (بند 46): تُحفظ محليًا لكل عميل؛ المرجع والمبلغ لا يُحفظان أبدًا ----- */
+  const favKey = () => 'aman.customer.fav.' + ui.id;
+  function loadFav() {
+    try { const v = JSON.parse(localStorage.getItem(favKey()) || 'null'); return v && typeof v === 'object' ? { packageId: String(v.packageId || ''), paymentId: String(v.paymentId || '') } : {}; } catch { return {}; }
+  }
+  function storeFav(v) { try { v ? localStorage.setItem(favKey(), JSON.stringify(v)) : localStorage.removeItem(favKey()); } catch { /* التخزين غير متاح: تبقى المفضلة للجلسة فقط */ } }
+  // يزامن حالة الشراء مع ما اختاره العميل في النموذج قبل أي انتقال أو إعادة رسم
+  function syncBuy() {
+    const f = $('#purchase'); if (!f) return ui.buy ||= { step: 1 };
+    const fd = new FormData(f), b = ui.buy ||= { step: 1 };
+    b.touched = true;
+    for (const k of ['packageId', 'paymentId', 'reference']) if (fd.has(k)) b[k] = String(fd.get(k));
+    b.saveFav = !!$('#saveFav')?.checked || (b.saveFav && !$('#saveFav'));
+    return b;
+  }
+  function buyStep(to) { const b = syncBuy(); b.step = Math.min(4, Math.max(1, to)); render({ top: true }); }
+  const ctxNow = () => ({ buy: ui.buy || {}, fav: loadFav(), q: ui.q, co: ui.co, lookup: ui.lookup, theme: selectedTheme(), noticeDot: notificationsEnabled(), id: ui.id });
   // تحديث الرأس فقط (الرصيد ونقطة الإشعارات) دون إعادة بناء الشاشة، حتى لا يضيع ما يكتبه العميل
   function refreshHeader() {
     try {
@@ -295,6 +311,23 @@
     if (a === 'sheet-scrim') { if (e.target === b) closeSheet(); return; }
     try {
       switch (a) {
+        case 'buy-prev': buyStep((syncBuy().step || 1) - 1); return;
+        case 'buy-next': {
+          const bs = syncBuy(), step = bs.step || 1;
+          clearFieldErrors();
+          if (step === 1 && !bs.packageId) { setFieldError('packageId', 'اختر باقة النقاط.'); focusField('packageId'); return; }
+          if (step === 2 && !bs.paymentId) { setFieldError('paymentId', 'اختر وسيلة الدفع.'); focusField('paymentId'); return; }
+          if (step === 3 && !String(bs.reference || '').trim()) { setFieldError('reference', 'أدخل مرجع التحويل.'); focusField('reference'); return; }
+          buyStep(step + 1); return;
+        }
+        case 'paste-reference': {
+          let text = '';
+          try { text = String(await navigator.clipboard.readText()).trim(); } catch { /* الإذن مرفوض أو غير مدعوم */ }
+          if (!text) { toast('تعذر اللصق من الحافظة. الصق المرجع يدويًا في الحقل.', true); $('#reference')?.focus(); return; }
+          const el = $('#reference'); if (el) { el.value = text; clearFieldError('reference'); syncBuy(); toast('تم لصق المرجع.'); }
+          return;
+        }
+        case 'fav-clear': storeFav(null); render(); toast('أُزيلت المفضلة.'); return;
         case 'go': go(b.dataset.to); return;
         case 'back': back(); return;
         case 'sheet-close': closeSheet(); return;
@@ -420,7 +453,15 @@
         }
         case 'number-search': ui.lookup = D.searchNumberStatus(ui.id, fd.get('number')); render(); return;
         case 'add-number': await D.addNumber(ui.id, fd.get('number')); closeSheet(); render(); toast('أُضيف الرقم إلى أرقامك.'); return;
-        case 'purchase': await D.createPurchase(ui.id, fd.get('packageId'), fd.get('paymentId'), fd.get('reference')); render(); toast('تم إرسال الطلب للمراجعة.'); return;
+        case 'purchase': {
+          const b = syncBuy();
+          try { await D.createPurchase(ui.id, fd.get('packageId'), fd.get('paymentId'), String(fd.get('reference')).trim()); }
+          catch (err) { // أعد العميل للخطوة المعنية ليرى الخطأ بجانب حقله
+            const m = String(err?.message || ''); b.step = /مرجع/.test(m) ? 3 : /وسيلة الدفع/.test(m) ? 2 : /الباقة/.test(m) ? 1 : b.step; render({ top: true }); throw err;
+          }
+          if (b.saveFav) storeFav({ packageId: String(fd.get('packageId')), paymentId: String(fd.get('paymentId')) });
+          ui.buy = null; render({ top: true }); toast('تم إرسال الطلب للمراجعة.'); return;
+        }
         default: throw new Error('تعذر العثور على النموذج.');
       }
     }, kind);
@@ -436,7 +477,7 @@
       if (m) { m.dataset.level = String(s.level); m.dataset.key = s.key; m.querySelector('span').textContent = s.text; }
     }
     if (t.id === 'newNumber' || t.id === 'search-number-input') {
-      const co = D.companyFor(t.value, D.read()), el = $(t.id === 'newNumber' ? '#modal-company' : '#search-company');
+      const co = D.companyFor(D.normalizePhone(t.value), D.read()), el = $(t.id === 'newNumber' ? '#modal-company' : '#search-company');
       if (el) el.textContent = co ? `شركة الاتصالات: ${co.name}` : (t.value.trim() ? 'لم يتم التعرف على شركة الاتصالات من بادئة الرقم' : (t.id === 'newNumber' ? 'أدخل الرقم لتحديد شركة الاتصالات' : 'أدخل الرقم للتعرف على الشركة إن أمكن.'));
     }
   });
@@ -445,7 +486,8 @@
     if (t.id === 'agree' || t.id === 'packageId' || t.id === 'paymentId') clearFieldError(t.id);
     if (t.id === 'flt') { ui.co = t.value; ui.limit = 0; refreshList(); return; }
     if (t.id === 'quickNumber') { const input = $('#search-number-input'); if (input) { input.value = t.value; input.dispatchEvent(new Event('input', { bubbles: true })); } return; }
-    if (t.id === 'paymentId') { const m = data().paymentMethods.find(x => x.id === t.value); const el = $('#paymentInstructions'); if (el) el.textContent = m?.instructions || 'لا توجد تعليمات'; return; }
+    if (t.name === 'packageId' || t.name === 'paymentId') { clearFieldError(t.name); syncBuy(); return; }
+    if (t.id === 'saveFav') { syncBuy(); return; }
     if (t.id === 'theme') { localStorage.setItem('aman.customer.theme', t.value); localStorage.setItem('aman.customer.dark', t.value === 'dark' ? '1' : '0'); applyTheme(); return; }
     if (t.id === 'notifications-enabled') {
       const key = `aman.customer.notifications.${ui.id}`, on = t.checked;
@@ -462,6 +504,7 @@
     if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'button', 'submit'].includes(t.type)) return;
     const form = t.closest('form[data-form]'); if (!form) return;
     if (ui.busy) { e.preventDefault(); return; }
+    if (form.dataset.form === 'purchase' && (ui.buy?.step || 1) < 4) { e.preventDefault(); $('[data-act=buy-next]')?.click(); return; }
     const missing = [...form.querySelectorAll('input:not([type=checkbox]):not([type=hidden]),select')].find(c => (c.required || ['login', 'signup'].includes(form.dataset.form)) && !String(c.value).trim());
     if (missing && missing !== t) { e.preventDefault(); missing.focus(); }
   });

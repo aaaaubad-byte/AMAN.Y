@@ -259,3 +259,34 @@ body.offline .screen{padding-top:12px}
 .row[hidden]{display:none!important}
 .more-wrap{display:grid;margin-top:12px}
 .ptr{position:absolute;top:calc(8px + env(safe-area-inset-top));inset-inline:0;margin:0 auto;width:max-content;z-index:35;padding:8px 16px;border-radius:999px;background:var(--black);color:var(--on-black);font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.2)}
+
+/* ===== شراء النقاط: خطوات واختيارات ومراحل الطلب (U3) ===== */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:16px 0 4px;padding:0;list-style:none}
+.steps li{display:grid;justify-items:center;gap:4px;font-size:12px;color:var(--muted);text-align:center}
+.steps li b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--tile);font-size:13px;font-weight:700;color:var(--ink)}
+.steps li.cur b{background:var(--black);color:var(--on-black)}
+.steps li.cur{color:var(--ink);font-weight:700}
+.steps li.done b{background:var(--ok-bg);color:var(--ok)}
+.step[hidden]{display:none}
+.choices{display:grid;gap:8px}
+.choice{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--r-card);background:var(--card);cursor:pointer;min-height:56px;box-shadow:inset 0 0 0 1.5px transparent}
+.choice:has(input:checked){box-shadow:inset 0 0 0 1.5px var(--black)}
+.choice:has(input:focus-visible){outline:2px solid var(--black);outline-offset:2px}
+.choice input{width:20px;height:20px;accent-color:var(--black);flex:none;margin:0}
+.choice .cmain{display:grid;gap:2px;flex:1;min-width:0}
+.choice .cmain b{font-size:15px}
+.choice .cmain small{font-size:13px;color:var(--muted);line-height:1.6;white-space:pre-line}
+.amount{display:grid;gap:2px;padding:14px 16px;border-radius:var(--r-card);background:var(--card);margin-bottom:10px}
+.amount small{color:var(--muted);font-size:13px}.amount b{font-size:22px}.amount span{font-size:12px;color:var(--muted)}
+.inline-actions{display:flex;gap:8px;margin-top:10px}
+.inline-actions .btn{width:auto;min-width:0;padding-inline:16px}
+.fav-note{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.btn.link{background:transparent;box-shadow:none;width:auto;min-height:36px;padding:0 8px;text-decoration:underline}
+.stages{display:grid;gap:0;margin:0 0 14px;padding:14px 16px;list-style:none;border-radius:var(--r-card);background:var(--card)}
+.stages li{position:relative;display:grid;gap:2px;padding:0 28px 14px 0;color:var(--muted)}
+.stages li:last-child{padding-bottom:0}
+.stages li i{position:absolute;inset-inline-start:auto;right:0;top:3px;width:14px;height:14px;border-radius:50%;background:var(--tile);box-shadow:0 0 0 2px var(--card)}
+.stages li::before{content:"";position:absolute;right:6px;top:18px;bottom:-3px;width:2px;background:var(--tile)}
+.stages li:last-child::before{display:none}
+.stages li b{font-size:15px;color:var(--ink)}.stages li small{font-size:12.5px}
+.stages li.done i{background:var(--ok)}.stages li.done.bad i{background:var(--bad)}.stages li.cur i{background:var(--black)}

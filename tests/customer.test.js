@@ -86,7 +86,43 @@ test('شراء النقاط يعرض الرصيد الحقيقي ويوضح أن
   const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], v = S.build('buy', d, c, x());
   assert.match(v.html, new RegExp(D.balance(c.id, d).toLocaleString('en-US')));
   assert.match(v.html, /تُضاف النقاط بعد مراجعة الطلب واعتماده/);
-  assert.match(v.bar, /data-submit/);
+  assert.match(v.bar, /data-act="buy-next"/, 'الخطوة الأولى تنتقل ولا ترسل');
+  const last = S.build('buy', d, c, x({ buy: { step: 4, packageId: d.packages[0].id, paymentId: d.paymentMethods[0].id, reference: 'R-1' } }));
+  assert.match(last.bar, /data-submit/); assert.match(last.html, /تُضاف النقاط بعد مراجعة الطلب واعتماده/);
+});
+
+test('U3: صيغ الأرقام اليمنية تُوحَّد إلى 9 خانات دون رفض الصيغ الصحيحة', () => {
+  for (const v of ['771234567', '0771234567', '967771234567', '00967771234567', '+967 77-123-4567', '٠٠٩٦٧٧٧١٢٣٤٥٦٧', ' 77 123 4567 ']) assert.equal(D.normalizePhone(v), '771234567', v);
+  assert.equal(D.normalizePhone('12345'), '12345');
+  assert.equal(D.normalizePhone('0'), '0');
+});
+
+test('U3: الشراء أربع خطوات، والمبلغ مقفل من الباقة، والمرجع بلا طول ثابت، و«الأفضل» بمعيار واضح', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], pk = d.packages.filter(p => p.active !== false);
+  const base = { packageId: pk[0].id, paymentId: d.paymentMethods[0].id };
+  const html = n => S.build('buy', d, c, x({ buy: { step: n, ...base, reference: 'AB-9' }, fav: {} })).html;
+  assert.match(html(1), /data-step="1" >/); assert.match(html(1), /data-step="2" hidden/);
+  assert.match(html(3), /id="buyAmount"/); assert.match(html(3), new RegExp(Number(pk[0].price).toLocaleString('en-US')));
+  assert.doesNotMatch(html(3), /id="buyAmount"[^>]*>[\s\S]{0,200}<input/, 'المبلغ عرض فقط');
+  assert.doesNotMatch(html(3), /maxlength|pattern=/, 'لا طول ولا صيغة ثابتة للمرجع');
+  assert.match(html(4), /AB-9/);
+  // «الأفضل»: أعلى نقاط لكل ريال وبتفرد فقط
+  const withPacks = packs => { const dd = { ...d, packages: packs }; return S.build('buy', dd, c, x()).html; };
+  const mk = (id, points, price) => ({ id, name: id, points, price, active: true });
+  assert.match(withPacks([mk('a', 100, 1000), mk('b', 300, 2000)]), /الأفضل قيمة/);
+  assert.doesNotMatch(withPacks([mk('a', 100, 1000), mk('b', 200, 2000)]), /الأفضل قيمة/, 'تعادل: لا تمييز');
+  assert.doesNotMatch(withPacks([mk('a', 100, 1000)]), /الأفضل قيمة/, 'باقة واحدة: لا تمييز');
+});
+
+test('U3: المفضلة تملأ الباقة والوسيلة فقط ولا تملأ المرجع، وتفاصيل الطلب تعرض مراحله', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], p = d.packages[1] || d.packages[0], m = d.paymentMethods[0];
+  const v = S.build('buy', d, c, x({ buy: { step: 1 }, fav: { packageId: p.id, paymentId: m.id } })).html;
+  assert.match(v, new RegExp(`name="packageId" value="${p.id}" checked`)); assert.match(v, /fav-clear/);
+  assert.doesNotMatch(v, /id="reference"[^>]*value="[^"]+"/);
+  const req = d.purchaseRequests.find(r => r.customerId === c.id) || null;
+  if (req) { const det = S.operationDetail(d, 'request', req.id, c); assert.match(det.body, /class="stages"/); assert.match(det.body, /قيد المراجعة/); }
 });
 
 test('عزل العميل: لا يحمّل ملفات الإدارة ولا يعدّل الملفات المشتركة ولا يصل للمخزن مباشرة', () => {

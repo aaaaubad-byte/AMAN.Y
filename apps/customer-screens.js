@@ -3,7 +3,7 @@
   'use strict';
   const D = AmanData, U = AmanUI, K = AmanCustomerKit, E = K.esc, N = U.fmt;
 
-  const LABEL = { pending: 'قيد المراجعة', approved: 'معتمد', rejected: 'مرفوض', active: 'فعال', expired: 'منتهٍ', planned: 'مخطط', due: 'مستحق', executed: 'منفذ', extended: 'ممدد' };
+  const LABEL = { pending: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض', active: 'فعال', expired: 'منتهٍ', planned: 'مخطط', due: 'مستحق', executed: 'منفذ', extended: 'ممدد' };
   const TONE = { pending: 'warn', approved: 'ok', rejected: 'bad' };
   const label = s => LABEL[s] || E(s);
   const OP_LABEL = { subscribe: 'اشتراك حماية', extend: 'تمديد حماية', renew: 'تجديد حماية' };
@@ -125,16 +125,50 @@
   }
 
   /* ===================== شراء النقاط والسجلات ===================== */
-  function buy(d, c) {
-    const packs = d.packages.filter(x => x.active !== false), methods = d.paymentMethods.filter(x => x.active !== false);
+  // «الأفضل» = أعلى نقاط مقابل كل ريال، ولا يظهر إلا لباقة واحدة متفردة بالمعيار (بند 44)
+  function bestPack(packs) {
+    const r = packs.map(p => ({ id: p.id, v: Number(p.points) / Number(p.price) })).filter(v => Number.isFinite(v.v) && v.v > 0);
+    if (r.length < 2) return '';
+    const max = Math.max(...r.map(v => v.v)), top = r.filter(v => v.v === max);
+    return top.length === 1 ? top[0].id : '';
+  }
+  const BUY_STEPS = ['الباقة', 'وسيلة الدفع', 'المرجع', 'المراجعة'];
+  function stepsBar(step) {
+    return `<ol class="steps" aria-label="خطوات الشراء">${BUY_STEPS.map((t, i) => `<li class="${i + 1 < step ? 'done' : i + 1 === step ? 'cur' : ''}" ${i + 1 === step ? 'aria-current="step"' : ''}><b>${N(i + 1)}</b><span>${t}</span></li>`).join('')}</ol>`;
+  }
+  // حالة الشراء تأتي من غلاف التطبيق: x.buy = { step, packageId, paymentId, reference, saveFav }, x.fav = المفضلة المحفوظة
+  function buy(d, c, x = {}) {
+    const packs = d.packages.filter(v => v.active !== false), methods = d.paymentMethods.filter(v => v.active !== false);
+    const st = x.buy || {}, fav = x.fav || {}, best = bestPack(packs);
+    const pickId = (list, ...ids) => ids.find(id => id && list.some(v => v.id === id)) || '';
+    const packageId = pickId(packs, st.packageId, st.touched ? '' : fav.packageId), paymentId = pickId(methods, st.paymentId, st.touched ? '' : fav.paymentId);
+    const pack = packs.find(v => v.id === packageId), method = methods.find(v => v.id === paymentId);
+    const reference = String(st.reference || '');
+    const step = Math.min(4, Math.max(1, Number(st.step) || 1));
     const hero = `<div class="hero"><small>رصيد أمان الحالي</small><div class="big">${N(D.balance(c.id, d))}<em>نقطة</em></div></div>`;
-    const form = `<form id="purchase" data-form="purchase" novalidate>${K.fields(
-      K.field({ id: 'packageId', name: 'packageId', label: 'باقة النقاط', type: 'select', required: true, options: packs.length ? packs.map(p => [p.id, `${p.name} — ${N(p.points)} نقطة · ${N(p.price)} ر.ي`]) : [['', 'لا توجد باقات متاحة']] }) +
-      K.field({ id: 'paymentId', name: 'paymentId', label: 'وسيلة الدفع', type: 'select', required: true, options: methods.length ? methods.map(m => [m.id, m.name]) : [['', 'لا توجد وسائل دفع متاحة']] }) +
-      K.field({ id: 'reference', name: 'reference', label: 'مرجع التحويل', required: true, placeholder: 'أدخل مرجع التحويل' }))}
-<div id="paymentInstructions" class="note">${E(methods[0]?.instructions || 'لا توجد وسيلة دفع متاحة')}</div><div id="form-error" class="form-error hidden" role="alert"></div></form>`;
+    const choice = (name, v, checked, title, sub, end = '', first = false) => `<label class="choice"><input type="radio" ${first ? `id="${name}"` : ''} name="${name}" value="${E(v)}" ${checked ? 'checked' : ''}><span class="cmain"><b>${E(title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>${end}</label>`;
+    const favNote = fav.packageId || fav.paymentId ? `<div class="note fav-note">المفضلة محفوظة وتُملأ تلقائيًا، ويبقى عليك إدخال المرجع. ${K.btn('إزالة المفضلة', 'fav-clear', 'link')}</div>` : '';
+    const p1 = `<div class="step" data-step="1" ${step === 1 ? '' : 'hidden'}>${K.section('اختر باقة النقاط')}${favNote}${packs.length ? `<div class="choices" role="radiogroup" aria-label="باقة النقاط">${packs.map((p, i) => choice('packageId', p.id, p.id === packageId, p.name, `${N(p.points)} نقطة · ${N(p.price)} ر.ي`, p.id === best ? K.pill('الأفضل قيمة', 'ok') : '', i === 0)).join('')}</div>${best ? K.note('«الأفضل قيمة» للباقة الأعلى نقاطًا مقابل كل ريال.') : ''}` : K.empty('لا توجد باقات متاحة حاليًا.', 'card')}<small class="ferr hidden" id="packageId-err" role="alert"></small></div>`;
+    const p2 = `<div class="step" data-step="2" ${step === 2 ? '' : 'hidden'}>${K.section('اختر وسيلة الدفع')}${methods.length ? `<div class="choices" role="radiogroup" aria-label="وسيلة الدفع">${methods.map((m, i) => choice('paymentId', m.id, m.id === paymentId, m.name, E(m.instructions || ''), '', i === 0)).join('')}</div>` : K.empty('لا توجد وسائل دفع متاحة حاليًا.', 'wallet')}<small class="ferr hidden" id="paymentId-err" role="alert"></small></div>`;
+    const amount = pack ? `<div class="amount" id="buyAmount"><small>المبلغ المطلوب تحويله</small><b>${N(pack.price)} ر.ي</b><span>يُحدَّد من الباقة المختارة ولا يمكن تعديله.</span></div>` : '';
+    const p3 = `<div class="step" data-step="3" ${step === 3 ? '' : 'hidden'}>${K.section('حوّل المبلغ ثم أدخل المرجع')}${amount}<div id="paymentInstructions" class="note">${E(method?.instructions || 'لا توجد تعليمات لوسيلة الدفع.')}</div>${K.fields(K.field({ id: 'reference', name: 'reference', label: 'مرجع التحويل', required: true, placeholder: 'أدخل مرجع التحويل أو الصقه', dir: 'ltr', value: reference, help: 'يُقبل المرجع كما تعطيه وسيلة الدفع، بلا طول أو صيغة محددة.' }))}<div class="inline-actions">${K.btn('لصق المرجع', 'paste-reference', '', '', 'copy')}</div></div>`;
+    const faved = fav.packageId === packageId && fav.paymentId === paymentId && !!packageId;
+    const p4 = `<div class="step" data-step="4" ${step === 4 ? '' : 'hidden'}>${K.section('راجع الطلب قبل الإرسال')}${K.kv([['الباقة', E(pack?.name || '—')], ['النقاط', pack ? N(pack.points) : '—'], ['المبلغ المحوَّل', pack ? `${N(pack.price)} ر.ي` : '—', true], ['وسيلة الدفع', E(method?.name || '—')], ['المرجع', `<span class="ltr">${E(reference || '—')}</span>`]])}${K.fields(K.toggle('saveFav', 'حفظ الباقة ووسيلة الدفع كمفضلة', st.saveFav ?? faved, 'تُملأ تلقائيًا في الطلبات القادمة، والمرجع يُدخل كل مرة.'))}${K.note('تُضاف النقاط بعد مراجعة الطلب واعتماده من الإدارة.')}</div>`;
+    const form = `<form id="purchase" data-form="purchase" novalidate>${p1}${p2}${p3}${p4}<div id="form-error" class="form-error hidden" role="alert"></div></form>`;
     const recent = d.purchaseRequests.filter(r => r.customerId === c.id).sort(byNew);
-    return withBar('شراء نقاط', 'طلب شراء رصيد أمان', `${hero}${K.section('طلب جديد')}${form}${K.note('تُضاف النقاط بعد مراجعة الطلب واعتماده من الإدارة.')}${K.card([K.row({ icon: 'receipt', title: 'جميع طلبات شراء النقاط', sub: recent.length ? `${N(recent.length)} طلب` : 'لا توجد طلبات بعد', to: 'orders' })])}`, { tab: 'buy', bar: `<div class="actionbar">${K.submitBtn('إرسال الطلب', 'purchase', 'primary', !packs.length || !methods.length ? 'disabled' : '')}</div>` });
+    const link = K.card([K.row({ icon: 'receipt', title: 'جميع طلبات شراء النقاط', sub: recent.length ? `${N(recent.length)} طلب` : 'لا توجد طلبات بعد', to: 'orders' })]);
+    const blocked = !packs.length || !methods.length;
+    const next = K.btn('التالي', 'buy-next', 'primary', blocked ? 'disabled' : '');
+    const prev = K.btn('السابق', 'buy-prev', '');
+    const bar = `<div class="actionbar">${step === 4 ? K.submitBtn('إرسال الطلب', 'purchase', 'primary', blocked ? 'disabled' : '') : next}${step > 1 ? prev : ''}</div>`;
+    return withBar('شراء نقاط', 'طلب شراء رصيد أمان', `${hero}${stepsBar(step)}${form}${step === 1 ? link : ''}`, { tab: 'buy', bar });
+  }
+  // مراحل الطلب: أُرسل ← قيد المراجعة ← مقبول/مرفوض (بند 31). تعرض الحالة الحالية دون تغيير البيانات المخزنة.
+  function requestStages(r) {
+    const final = r.status === 'approved' ? ['مقبول', 'ok'] : r.status === 'rejected' ? ['مرفوض', 'bad'] : ['مقبول / مرفوض', ''];
+    const reviewed = r.status !== 'pending';
+    const items = [['أُرسل', 'done', U.date(r.createdAt)], ['قيد المراجعة', reviewed ? 'done' : 'cur', reviewed ? '' : 'بانتظار الإدارة'], [final[0], reviewed ? 'done ' + final[1] : '', reviewed ? U.date(r.reviewedAt) : '']];
+    return `<ol class="stages" aria-label="مراحل الطلب">${items.map(([t, cls, sub]) => `<li class="${cls}"><i></i><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</li>`).join('')}</ol>`;
   }
   function points(d, c) {
     const rows = d.pointTransactions.filter(t => t.customerId === c.id).sort(byNew);
@@ -179,7 +213,7 @@
       title = 'تفاصيل عملية الحماية';
       rows = [['نوع العملية', E(({ subscribe: 'اشتراك جديد', extend: 'تمديد', renew: 'تجديد' })[x.type] || x.type)], ['الرقم', `<span class="ltr">${E(numberFor(x.numberId)?.number || '—')}</span>`], ['باقة الحماية', E(x.packageSnapshot?.name || '—')], ['المدة', `${N(x.packageSnapshot?.days)} يوم`], ['التكلفة', `${N(x.pointsCost)} نقطة`], ['بداية الحماية', U.date(x.startsAt)], ['الانتهاء', U.date(x.endsAt)], ['التاريخ', U.date(x.createdAt)]];
     } else return null;
-    return { title, body: K.kv(rows) };
+    return { title, body: (kind === 'request' ? requestStages(d.purchaseRequests.find(v => v.id === id)) : '') + K.kv(rows) };
   }
 
   /* ===================== الإشعارات والحساب ===================== */

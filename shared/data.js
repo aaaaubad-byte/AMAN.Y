@@ -132,12 +132,14 @@
     return db.companies.filter(c=>c.active!==false&&(c.prefixes||[]).some(p=>digits.startsWith(String(p).replace(/\D/g,''))))
       .sort((a,b)=>Math.max(...(b.prefixes||[]).map(p=>String(p).replace(/\D/g,'').length),0)-Math.max(...(a.prefixes||[]).map(p=>String(p).replace(/\D/g,'').length),0))[0] || null;
   }
+  // صيغ الأرقام اليمنية المقبولة: 7XXXXXXXX، 07XXXXXXXX، 9677XXXXXXXX، 009677XXXXXXXX، +9677XXXXXXXX، مع مسافات وشرطات وأرقام عربية.
+  function normalizePhone(value){let d=digitsOnly(value);if(d.startsWith('00967')&&d.length===14)d=d.slice(5);else if(d.startsWith('967')&&d.length===12)d=d.slice(3);if(d.startsWith('0')&&d.length===10)d=d.slice(1);return d;}
   function validPhone(number, company) { const n=digitsOnly(number); return !!company && (company.lengths||[]).includes(n.length) && /^\d+$/.test(n); }
   function activeSubscription(db, numberId, at=Date.now()) { return db.subscriptions.filter(s=>s.numberId===numberId&&s.status==='active'&&Number.isFinite(new Date(s.startsAt||0).getTime())&&new Date(s.startsAt||0).getTime()<=at&&Number.isFinite(new Date(s.endsAt).getTime())&&new Date(s.endsAt).getTime()>at).sort((a,b)=>new Date(b.endsAt)-new Date(a.endsAt))[0]||null; }
   function numberLinked(db,customerId,numberId){return db.numberLinks.some(x=>x.customerId===customerId&&x.numberId===numberId)||db.numbers.some(x=>x.id===numberId&&x.customerId===customerId);}
   function customerNumbers(db,customerId){const ids=new Set(db.numberLinks.filter(x=>x.customerId===customerId).map(x=>x.numberId));for(const sub of db.subscriptions)if(sub.customerId===customerId)ids.add(sub.numberId);return db.numbers.filter(n=>ids.has(n.id)||n.customerId===customerId);}
   function ownedNumber(db, customerId, numberId) { const n=db.numbers.find(x=>x.id===numberId); if(!n||!numberLinked(db,customerId,n.id)) throw new Error('هذا الرقم غير موجود ضمن أرقام حسابك.'); return n; }
-  async function addNumber(customerId,value){const digits=digitsOnly(value);return transact(customerId,'number_added',db=>{const co=companyFor(digits,db);if(!validPhone(digits,co))throw new Error(co?'طول الرقم لا يطابق قواعد الشركة المسجلة.':'لا يمكن اكتشاف الشركة من بادئة الرقم.');let n=db.numbers.find(x=>digitsOnly(x.number)===digits);if(n&&numberLinked(db,customerId,n.id))throw new Error('هذا الرقم مضاف إلى حسابك بالفعل.');if(!n){n={id:uid('num'),customerId:null,number:digits,companyId:co.id,addedAt:now(),status:'active'};db.numbers.push(n);}if(n.companyId!==co.id)throw new Error('بيانات الشركة المسجلة للرقم متعارضة.');db.numberLinks.push({id:uid('numlink'),numberId:n.id,customerId,createdAt:now()});return{entityType:'number_link',entityId:n.id,summary:`إضافة رقم ${digits} إلى الحساب دون تفعيل اشتراك`};});}
+  async function addNumber(customerId,value){const digits=normalizePhone(value);return transact(customerId,'number_added',db=>{const co=companyFor(digits,db);if(!validPhone(digits,co))throw new Error(co?'طول الرقم لا يطابق قواعد الشركة المسجلة.':'لا يمكن اكتشاف الشركة من بادئة الرقم.');let n=db.numbers.find(x=>digitsOnly(x.number)===digits);if(n&&numberLinked(db,customerId,n.id))throw new Error('هذا الرقم مضاف إلى حسابك بالفعل.');if(!n){n={id:uid('num'),customerId:null,number:digits,companyId:co.id,addedAt:now(),status:'active'};db.numbers.push(n);}if(n.companyId!==co.id)throw new Error('بيانات الشركة المسجلة للرقم متعارضة.');db.numberLinks.push({id:uid('numlink'),numberId:n.id,customerId,createdAt:now()});return{entityType:'number_link',entityId:n.id,summary:`إضافة رقم ${digits} إلى الحساب دون تفعيل اشتراك`};});}
   async function createPurchase(customerId, packageId, paymentMethodId, reference) {
     return transact(customerId,'purchase_requested',db=>{
       const c=db.customers.find(x=>x.id===customerId); if(!c) throw new Error('الحساب غير موجود.');
@@ -309,7 +311,7 @@
     });
   }
   function searchNumberStatus(customerId,value){
-    const db=read(),digits=digitsOnly(value);if(!digits)throw new Error('أدخل رقمًا صالحًا للبحث.');
+    const db=read(),digits=normalizePhone(value);if(!digits)throw new Error('أدخل رقمًا صالحًا للبحث.');
     const n=db.numbers.find(x=>digitsOnly(x.number)===digits),co=(n&&db.companies.find(x=>x.id===n.companyId))||companyFor(digits,db),sub=n&&db.subscriptions.filter(x=>x.numberId===n.id&&x.status==='active').sort((a,b)=>new Date(b.endsAt)-new Date(a.endsAt))[0],active=sub&&new Date(sub.startsAt)<=Date.now()&&new Date(sub.endsAt)>Date.now();
     const owner=!!sub&&sub.customerId===customerId;
     if(!co||!validPhone(digits,co))throw new Error('تعذر تحديد شركة أو طول صالح لهذا الرقم.');
@@ -319,5 +321,5 @@
   }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });
