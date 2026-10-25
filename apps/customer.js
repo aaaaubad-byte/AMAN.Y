@@ -4,8 +4,8 @@
   'use strict';
   const D = AmanData, U = AmanUI, K = AmanCustomerKit, S = AmanCustomerScreens;
   const E = K.esc, N = U.fmt, $ = s => document.querySelector(s);
-  const TABS = [['radar', 'الرادار', 'radar'], ['numbers', 'الأرقام', 'numbers'], ['home', 'الرئيسية', 'home'], ['buy', 'شراء نقاط', 'card'], ['operations', 'العمليات', 'repeat']];
-  const ROUTES = ['home', 'radar', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security'];
+  const TABS = [['subscriptions', 'الاشتراكات', 'shield'], ['numbers', 'الأرقام', 'numbers'], ['home', 'الرئيسية', 'home'], ['buy', 'شراء نقاط', 'card'], ['operations', 'العمليات', 'repeat']];
+  const ROUTES = ['home', 'subscriptions', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security'];
   const PARENT = { orders: 'buy', settings: 'account', security: 'account' };
 
   const DEMO = new URLSearchParams(location.search).get('demo') === '1'; // وضع المعاينة فقط: تعبئة بيانات الدخول وحساب العميل التجريبي
@@ -62,7 +62,7 @@
 
   /* ===================== التوجيه وسجل الرجوع ===================== */
   // رابط فيه % مشوّه لا يجوز أن يكسر التطبيق: يُعامَل كمسار غير معروف فيعود إلى الرئيسية
-  const hashRoute = () => { let r = 'home'; try { r = decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { /* مشوّه */ } return ROUTES.includes(r) ? r : 'home'; };
+  const hashRoute = () => { let r = 'home'; try { r = decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { /* مشوّه */ } if (r === 'radar') r = 'subscriptions'; return ROUTES.includes(r) ? r : 'home'; };
   const histState = () => (history.state && history.state.amanCustomer ? history.state : null);
   function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
   function go(route, { replace = false } = {}) {
@@ -356,7 +356,7 @@
           const n = ownedNumber(data(), id); if (!n) throw new Error('هذا الرقم غير موجود ضمن أرقام حسابك.');
           const was = !!n.radar;
           await D.setRadar(ui.id, id, !was);
-          closeSheet(); render(); toast(was ? 'أُوقفت المتابعة.' : 'بدأت المتابعة.', false, { fn: () => D.setRadar(ui.id, id, was) });
+          closeSheet(); render(); toast(was ? 'أُوقفت تنبيهات تغيّر الحالة.' : 'فُعّلت تنبيهات تغيّر الحالة.', false, { fn: () => D.setRadar(ui.id, id, was) });
         }); return;
         case 'radar-remove': await run(async () => {
           await D.setRadar(ui.id, id, false);

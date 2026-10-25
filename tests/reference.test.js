@@ -89,7 +89,7 @@ test('واجهة العميل تعرض قائمة أرقام الحساب مع �
   const screens=read('apps/customer-screens.js'),shell=read('apps/customer.js'),css=read('apps/customer.css'),data=read('shared/data.js');
   assert.match(data,/for\(const sub of db\.subscriptions\)if\(sub\.customerId===customerId\)ids\.add\(sub\.numberId\)/);
   // شاشة الأرقام: قائمة الحساب + بحث + فلتر الشركة، وتُحدَّث القائمة وحدها أثناء الكتابة
-  assert.match(screens,/function numbers\(d, c, x\)/);assert.match(screens,/const all = owned\(d, c\.id\);/);
+  assert.match(screens,/function numbers\(d, c, x\)/);assert.match(screens,/const all = owned\(d, c\.id\)/);
   assert.match(screens,/K\.toolbar\('بحث برقم الهاتف'/);assert.match(screens,/\['', 'كل الشركات'\]/);assert.match(screens,/id="listbody" class="customer-number-list"/);
   assert.match(shell,/if \(t\.id === 'q'\) \{ ui\.q = t\.value;( ui\.limit = 0;)? refreshList\(\)/);assert.match(shell,/if \(t\.id === 'flt'\) \{ ui\.co = t\.value;( ui\.limit = 0;)? refreshList\(\)/);
   // بحث الرئيسية: حقل رقم + قائمة اختيار صغيرة لأرقام الحساب، دون تكرار قائمة الأرقام

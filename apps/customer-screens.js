@@ -15,12 +15,25 @@
   const byNew = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
   const notices = (d, id) => d.notifications.filter(n => n.customerId === id).sort(byNew);
 
-  function numberState(d, n, id) {
+  const NEAR_DAYS = 7; // مؤقت: حد «ينتهي قريبًا». يُضبط إداريًا في U11؛ لا يغيّر أي بيانات.
+  // نافذة الاشتراك السارية للرقم: اشتراك العميل نفسه، أو اشتراك عميل آخر لرقم يتابعه (تواريخ فقط بلا هوية المالك)
+  function liveInfo(d, n, id) {
     const s = liveSub(d, n, id);
-    if (s) return { key: 'active', text: `متبقي ${N(daysLeft(s))} يوم`, tone: 'ok', sub: s };
+    if (s) return { startsAt: s.startsAt, endsAt: s.endsAt, own: true };
+    return n.liveSub ? { startsAt: n.liveSub.startsAt, endsAt: n.liveSub.endsAt, own: !!n.liveSub.own } : null;
+  }
+  function numberState(d, n, id) {
+    const i = liveInfo(d, n, id);
+    if (i) { const left = daysLeft(i), near = left <= NEAR_DAYS; return { key: 'active', text: `متبقي ${N(left)} يوم`, tone: near ? 'warn' : 'ok', sub: i, own: i.own, near, left }; }
     if (n.protectionStatus === 'protected') return { key: 'protected', text: 'محمي', tone: 'ok' };
     if (n.protectionStatus === 'expired' || d.subscriptions.some(x => x.numberId === n.id)) return { key: 'expired', text: 'منتهية', tone: 'warn' };
     return { key: 'none', text: 'غير محمي', tone: '' };
+  }
+  // نسبة المدة المنقضية من مدة الاشتراك (بند 41)
+  function progress(i) {
+    const a = new Date(i.startsAt).getTime(), b = new Date(i.endsAt).getTime();
+    const pct = Number.isFinite(a) && Number.isFinite(b) && b > a ? Math.round(Math.min(1, Math.max(0, (Date.now() - a) / (b - a))) * 100) : 100;
+    return `<span class="progress" role="progressbar" aria-label="المدة المنقضية من الاشتراك" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></span>`;
   }
   const withBar = (title, sub, html, extra = {}) => ({ chrome: 'tabs', html: K.bar(title, sub) + html, ...extra });
 
@@ -86,42 +99,54 @@
     const q = String(x.q || '').trim().toLowerCase(), name = company(d, n)?.name || '';
     return (!q || String(n.number).toLowerCase().includes(q) || name.toLowerCase().includes(q)) && (!x.co || name === x.co);
   };
+  const stateOf = (d, c) => n => numberState(d, n, c.id);
   function numbers(d, c, x) {
-    const all = owned(d, c.id);
+    const all = owned(d, c.id).filter(n => stateOf(d, c)(n).key === 'none'), total = owned(d, c.id).length;
     const list = () => {
       const rows = all.filter(n => matches(d, n, x));
-      if (!all.length) return K.empty('أضف رقمك الأول ثم فعّل حمايته من تفاصيله.', 'numbers', 'لا توجد أرقام مضافة بعد');
+      if (!total) return K.empty('أضف رقمك الأول ثم فعّل حمايته من تفاصيله.', 'numbers', 'لا توجد أرقام مضافة بعد');
+      if (!all.length) return K.empty('كل أرقامك لها اشتراك، وتجدها في شاشة الاشتراكات.', 'shield', 'لا توجد أرقام بلا اشتراك', K.btn('عرض الاشتراكات', 'go', '', 'data-to="subscriptions"', 'shield'));
       if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
       return K.card(rows.map(n => numberRow(d, n, c.id)));
     };
     const tool = all.length ? K.toolbar('بحث برقم الهاتف', x.q, [['', 'كل الشركات'], ...companyNames(d, all).map(n => [n, n])], x.co || '') : '';
-    return withBar('الأرقام', all.length ? `${N(all.length)} ${all.length === 1 ? 'رقم' : 'أرقام'}` : '', `${tool}<div id="listbody" class="customer-number-list">${list()}</div>`, { tab: 'numbers', list, bar: `<div class="actionbar">${K.btn('إضافة رقم', 'add-number-open', 'primary', '', 'plus')}</div>` });
+    return withBar('الأرقام', all.length ? `${N(all.length)} ${all.length === 1 ? 'رقم بلا اشتراك' : 'أرقام بلا اشتراك'}` : 'أرقام لم يُفعَّل لها اشتراك', `${tool}<div id="listbody" class="customer-number-list">${list()}</div>`, { tab: 'numbers', list, bar: `<div class="actionbar">${K.btn('إضافة رقم', 'add-number-open', 'primary', '', 'plus')}</div>` });
   }
-  function radar(d, c, x) {
-    const all = owned(d, c.id).filter(n => n.radar && liveSub(d, n, c.id));
+  // صف اشتراك: الرقم والشركة وشارة الأيام وشريط التقدم وتاريخ الانتهاء (بنود 28، 40، 41)
+  function subRow(d, n, id) {
+    const st = numberState(d, n, id), co = company(d, n), live = st.key === 'active';
+    const pill = live ? K.pill(st.near ? `ينتهي قريبًا · ${N(st.left)} يوم` : `${N(st.left)} يوم متبقٍ`, st.tone) : K.pill('منتهٍ', 'warn');
+    const meta = live ? `${progress(st.sub)}<span class="subline">ينتهي ${U.date(st.sub.endsAt)}${st.own ? '' : ' · متابعة فقط'}</span>` : '<span class="subline">انتهى الاشتراك ويمكن تجديده</span>';
+    return K.row({ icon: 'shield', tone: live ? st.tone : 'warn', title: n.number, ltr: true, sub: E(co?.name || 'شركة غير معروفة'), sub2: meta, pill, act: 'number-detail', attrs: `data-id="${E(n.id)}"` });
+  }
+  function subscriptions(d, c, x) {
+    const all = owned(d, c.id).filter(n => ['active', 'expired', 'protected'].includes(stateOf(d, c)(n).key))
+      .sort((a, b) => { const A = numberState(d, a, c.id), B = numberState(d, b, c.id); return (A.key === 'active' ? 0 : 1) - (B.key === 'active' ? 0 : 1) || (A.left ?? 0) - (B.left ?? 0); });
     const list = () => {
       const rows = all.filter(n => matches(d, n, x));
-      if (!all.length) return K.empty('افتح تفاصيل رقم ذي اشتراك فعال لإضافته إلى الرادار.', 'radar', 'لا توجد أرقام فعالة في الرادار', K.btn('عرض أرقامي', 'go', '', 'data-to="numbers"', 'numbers'));
-      if (!rows.length) return K.empty('لا توجد أرقام تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
-      return `<div class="list">${rows.map(n => `<div class="card">${numberRow(d, n, c.id)}<div class="rowfoot">${K.btn('إيقاف المتابعة', 'radar-remove', 'small', `data-id="${E(n.id)}"`)}</div></div>`).join('')}</div>`;
+      if (!all.length) return K.empty('الأرقام التي تفعّل لها الحماية، أو تتابع اشتراكها بعد إضافتها، تظهر هنا.', 'shield', 'لا توجد اشتراكات بعد', K.btn('عرض أرقامي', 'go', '', 'data-to="numbers"', 'numbers'));
+      if (!rows.length) return K.empty('لا توجد اشتراكات تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
+      return K.card(rows.map(n => subRow(d, n, c.id)));
     };
     const tool = all.length ? K.toolbar('بحث برقم الهاتف', x.q, [['', 'كل الشركات'], ...companyNames(d, all).map(n => [n, n])], x.co || '') : '';
-    return withBar('الرادار', 'يتابع الأرقام ذات الاشتراك الفعال', `${tool}<div id="listbody">${list()}</div>`, { tab: 'radar', list });
+    return withBar('الاشتراكات', all.length ? `${N(all.length)} ${all.length === 1 ? 'اشتراك' : 'اشتراكات'}` : 'اشتراكاتك والأرقام التي تتابعها', `${tool}<div id="listbody" class="customer-number-list">${list()}</div>`, { tab: 'subscriptions', list });
   }
   function numberDetail(d, n, id) {
-    const co = company(d, n), st = numberState(d, n, id), s = st.sub || null;
+    const co = company(d, n), st = numberState(d, n, id), s = st.sub || null, follower = st.key === 'active' && !st.own;
     const latest = d.subscriptions.filter(v => v.numberId === n.id).sort(byNew)[0];
     const packs = (d.protectionPackages || []).filter(p => p.companyId === co?.id && p.active !== false);
     const op = st.key === 'active' ? 'extend' : latest ? 'renew' : 'subscribe';
-    const stateText = st.key === 'active' ? `سارية — ${N(daysLeft(s))} يوم متبقٍ` : latest ? 'منتهية أو غير سارية' : 'غير محمي';
-    const rows = [['رقم الهاتف', `<span class="ltr">${E(n.number)}</span>`], ['الشركة', E(co?.name || '—')], ['حالة الحماية', stateText]];
-    if (s) rows.push(['بداية الحماية', U.date(s.startsAt)], ['تاريخ الانتهاء', U.date(s.endsAt)]);
-    const hero = `<div class="hero"><div class="hero-top"><span class="ico">${K.ico('shield')}</span><div><h2 class="ltr">${E(n.number)}</h2><p>${E(co?.name || '—')}</p></div></div><span class="pill ${st.tone === 'ok' ? 'ok' : ''}">${E(st.key === 'active' ? `سارية · ${N(daysLeft(s))} يوم متبقٍ` : latest ? 'منتهية أو غير سارية' : 'غير محمي')}</span></div>`;
+    const label2 = st.key === 'active' ? (follower ? `سارٍ · ${N(st.left)} يوم متبقٍ · متابعة فقط` : `سارٍ — ${N(st.left)} يوم متبقٍ`) : latest ? 'منتهٍ أو غير ساري' : 'غير محمي';
+    const rows = [['رقم الهاتف', `<span class="ltr">${E(n.number)}</span>`], ['الشركة', E(co?.name || '—')], ['حالة الاشتراك', label2]];
+    if (s) rows.push(['بداية الاشتراك', U.date(s.startsAt)], ['تاريخ الانتهاء', U.date(s.endsAt)], ['المدة المتبقية', `${N(st.left)} يوم`]);
+    const hero = `<div class="hero"><div class="hero-top"><span class="ico">${K.ico('shield')}</span><div><h2 class="ltr">${E(n.number)}</h2><p>${E(co?.name || '—')}</p></div></div><span class="pill ${st.tone === 'ok' ? 'ok' : st.tone === 'warn' ? 'warn' : ''}">${E(label2)}</span>${s ? progress(s) : ''}</div>`;
+    const history = follower ? K.note('أنت تتابع هذا الاشتراك ولا تملكه؛ التمديد والتجديد من صاحبه، ويصلك إشعار عند تغيّر حالته إذا فعّلت التنبيهات.')
+      : (() => { const ops = (d.protectionOperations || []).filter(o => o.numberId === n.id && o.customerId === id).sort(byNew); return ops.length ? K.section('سجل التجديد') + K.card(ops.map(o => K.row({ icon: 'repeat', title: `${OP_LABEL[o.type] || 'عملية حماية'}${o.packageSnapshot?.name ? ' — ' + E(o.packageSnapshot.name) : ''}`, sub: U.date(o.createdAt), sub2: `حتى ${U.date(o.endsAt)}`, val: `${N(o.pointsCost)} نقطة`, plain: true }))) : ''; })();
     let foot = '';
-    if (packs.length) foot += K.btn(op === 'extend' ? 'تمديد الحماية' : op === 'renew' ? 'تجديد الحماية' : 'تفعيل الحماية', 'protection-path', 'primary', `data-number="${E(n.number)}" data-company="${E(co?.id || '')}" data-operation="${op}"`);
-    if (st.key === 'active') foot += K.btn(n.radar ? 'إيقاف متابعة الرادار' : 'إضافة إلى الرادار', 'radar-toggle', '', `data-id="${E(n.id)}"`, 'radar');
+    if (!follower && packs.length) foot += K.btn(op === 'extend' ? 'تمديد الاشتراك' : op === 'renew' ? 'تجديد الاشتراك' : 'تفعيل الاشتراك', 'protection-path', 'primary', `data-number="${E(n.number)}" data-company="${E(co?.id || '')}" data-operation="${op}"`);
+    if (st.key === 'active') foot += K.btn(n.radar ? 'إيقاف تنبيهات تغيّر الحالة' : 'تفعيل تنبيهات تغيّر الحالة', 'radar-toggle', '', `data-id="${E(n.id)}"`, 'bell');
     foot += K.btn('إشعارات الرقم', 'number-notifications', '', `data-id="${E(n.id)}"`, 'bell');
-    return { title: 'تفاصيل الحماية', body: hero + K.kv(rows) + (packs.length ? '' : K.note('لا توجد باقات حماية متاحة لهذه الشركة حاليًا.')), foot };
+    return { title: 'تفاصيل الاشتراك', body: hero + K.kv(rows) + history + (!follower && !packs.length ? K.note('لا توجد باقات حماية متاحة لهذه الشركة حاليًا.') : ''), foot };
   }
 
   /* ===================== شراء النقاط والسجلات ===================== */
@@ -249,7 +274,7 @@
 
   function build(route, d, c, x) {
     switch (route) {
-      case 'radar': return radar(d, c, x);
+      case 'radar': case 'subscriptions': return subscriptions(d, c, x);
       case 'numbers': return numbers(d, c, x);
       case 'buy': return buy(d, c, x);
       case 'operations': return operations(d, c, x);

@@ -159,6 +159,49 @@ test('U4: شارة الإشعارات تعرض عدد غير المقروء وت
   assert.match(S.build('home', d, c, x({ noticeDot: false })).html, /id="unreadDot" class="dot hidden"><\/i>/);
 });
 
+test('U5: «الأرقام» لغير المشترك لها و«الاشتراكات» للأرقام ذات الاشتراك (سارٍ أو منتهٍ)، مع شارة قرب الانتهاء وشريط التقدم', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], H = 86400000;
+  const sub = id => d.subscriptions.find(v => v.numberId === id);
+  Object.assign(sub('num-1001'), { startsAt: new Date(Date.now() - 20 * H).toISOString(), endsAt: new Date(Date.now() + 20 * H).toISOString() });
+  Object.assign(sub('num-1002'), { startsAt: new Date(Date.now() - 27 * H).toISOString(), endsAt: new Date(Date.now() + 3 * H).toISOString() });
+  d.numbers.push({ id: 'num-free', customerId: c.id, number: '781000111', companyId: d.numbers[0].companyId, addedAt: new Date().toISOString(), status: 'active', radar: false, liveSub: null, protectionStatus: 'none' });
+  const subs = S.build('subscriptions', d, c, x({ id: c.id })), nums = S.build('numbers', d, c, x({ id: c.id }));
+  assert.match(subs.list(), /771234567/); assert.match(subs.list(), /711234569/, 'المنتهي يبقى في الاشتراكات لتجديده'); assert.doesNotMatch(subs.list(), /781000111/);
+  assert.match(nums.list(), /781000111/); assert.doesNotMatch(nums.list(), /771234567|731234568|711234569/);
+  assert.match(subs.list(), /ينتهي قريبًا · /, 'رقم ينتهي خلال 3 أيام'); assert.match(subs.list(), /role="progressbar"[^>]*aria-valuenow="50"/);
+  assert.ok(subs.list().indexOf('731234568') < subs.list().indexOf('771234567'), 'الأقرب انتهاءً أولًا');
+  assert.equal(S.build('radar', d, c, x({ id: c.id })).tab, 'subscriptions', 'مسار الرادار القديم يعرض الاشتراكات');
+});
+
+test('U5: متابعة اشتراك رقم يملكه عميل آخر: التواريخ والتنبيهات فقط، بلا ملكية ولا تجديد، ودون كشف المالك', async () => {
+  seed();
+  await D.addNumber('cus-demo-low', '771234567'); // رقم مشترك لعميل آخر
+  const d = D.readForCustomer('cus-demo-low'), c = d.customers[0], n = d.numbers.find(v => v.number === '771234567');
+  assert.ok(n.liveSub && n.liveSub.own === false); assert.equal(d.subscriptions.some(v => v.numberId === n.id), false, 'لا يملك سجل الاشتراك');
+  assert.doesNotMatch(JSON.stringify(d), /cus-demo-subscriber/, 'لا تسريب لهوية المالك');
+  assert.match(S.build('subscriptions', d, c, x({ id: c.id })).list(), /متابعة فقط/);
+  const v = S.numberDetail(d, n, c.id);
+  assert.match(v.body, /تتابع هذا الاشتراك ولا تملكه/); assert.doesNotMatch(v.foot, /protection-path/); assert.match(v.foot, /radar-toggle/);
+  assert.doesNotMatch(S.build('numbers', d, c, x({ id: c.id })).list(), /771234567/);
+  const own = D.readForCustomer('cus-demo-subscriber'); own.protectionPackages = [{ id: 'pp-1', name: 'باقة', companyId: 'co-net77', days: 30, pointsCost: 10, active: true }]; const ov = S.numberDetail(own, own.numbers.find(v2 => v2.id === 'num-1001'), 'cus-demo-subscriber');
+  assert.match(ov.foot, /protection-path/); assert.match(ov.body, /المدة المتبقية/);
+});
+
+test('U5 (87): تمديد صاحب الاشتراك يُخطر المتابع الذي فعّل التنبيهات فقط، دون هوية المالك أو المهام', async () => {
+  const base = Fixture.seedData(); base.protectionPackages = [{ id: 'pp-1', name: 'باقة 30', companyId: 'co-net77', days: 30, pointsCost: 10, active: true }];
+  D.setStorageForTests(store(JSON.stringify(base)));
+  await D.addNumber('cus-demo-low', '771234567'); await D.addNumber('cus-demo-new', '771234567');
+  await D.setRadar('cus-demo-low', 'num-1001', true); // cus-demo-new يتابع بلا تنبيهات
+  await D.performProtectionOperation('cus-demo-subscriber', 'num-1001', 'pp-1', 'extend', 'k-87');
+  const low = D.readForCustomer('cus-demo-low').notifications, nw = D.readForCustomer('cus-demo-new').notifications, owner = D.readForCustomer('cus-demo-subscriber').notifications;
+  const got = low.filter(n => n.title === 'تغيّر حالة اشتراك رقم تتابعه');
+  assert.equal(got.length, 1); assert.match(got[0].body, /مُدّد اشتراك الرقم 771234567/);
+  assert.doesNotMatch(JSON.stringify(got), /cus-demo-subscriber|مهمة|task/);
+  assert.equal(nw.filter(n => n.title === 'تغيّر حالة اشتراك رقم تتابعه').length, 0, 'من لم يفعّل التنبيهات لا يُخطَر');
+  assert.equal(owner.filter(n => n.title === 'تغيّر حالة اشتراك رقم تتابعه').length, 0, 'المالك لا يُخطر بعمليته');
+});
+
 test('عزل العميل: لا يحمّل ملفات الإدارة ولا يعدّل الملفات المشتركة ولا يصل للمخزن مباشرة', () => {
   const html = read('customer.html');
   assert.doesNotMatch(html, /admin\.css|admin-kit|admin-screens|admin-model|admin\.js|reference\.css|customer-base\.css/);
@@ -314,13 +357,13 @@ test('U1 (39): الشاشات الفارغة تقدّم الخطوة التال�
   D.setStorageForTests(store(JSON.stringify(base)));
   const d = D.readForCustomer('c9'), c = d.customers[0], v = r => S.build(r, d, c, x({ id: 'c9' })).html;
   for (const r of ['orders', 'operations']) assert.match(v(r), /empty-action[^]*data-to="buy"/, r + ' يوجّه إلى شراء النقاط');
-  assert.match(v('radar'), /data-to="numbers"/);
+  assert.match(v('radar'), /data-to="numbers"/); assert.match(v('subscriptions'), /data-to="numbers"/);
   assert.match(v('notifications'), /لا توجد إشعارات/);assert.doesNotMatch(v('notifications'), /empty-action/, 'الإشعارات إعلامية بلا إجراء');
   assert.doesNotMatch(v('operations') + v('orders'), /undefined|\[object Object\]|NaN/);
   assert.match(K.empty('سبب', 'inbox', 'عنوان', '<button>زر</button>'), /<b>عنوان<\/b><p>سبب<\/p><div class="empty-action"><button>زر<\/button><\/div>/);
   assert.doesNotMatch(K.empty('سبب'), /empty-action/);
   const all = seed(), id = 'cus-demo-subscriber', d2 = D.readForCustomer(id);
-  assert.match(S.build('numbers', d2, d2.customers[0], x({ id, q: 'لا-يوجد-رقم-كهذا' })).list(), /data-act="clear-filter"/);
+  assert.match(S.build('subscriptions', d2, d2.customers[0], x({ id, q: 'لا-يوجد-رقم-كهذا' })).list(), /data-act="clear-filter"/);
 });
 
 test('U1 (36 و37): هيكل التحميل مُعلَن لقارئات الشاشة ويظهر قبل تحميل السكربت، وشاشة الخطأ تحوي إعادة المحاولة', () => {
