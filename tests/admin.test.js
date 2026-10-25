@@ -155,7 +155,7 @@ test('U2-ج: تحميل المزيد والسحب للتحديث والتراج�
   assert.match(js, /pullToRefresh/);assert.match(js, /s\.scrollTop > 0 \|\| e\.target\.closest\?\.\('input,textarea,select'\)/, 'لا سحب داخل حقل أو بعد التمرير');
   assert.match(js, /function toast\(text, bad = false, undo = null\)/);assert.match(js, /case 'toast-undo'/);
   assert.match(js, /number_restriction_restored/);assert.match(js, /تراجع عن تحديث إعداد إداري/);
-  const fin = js.split("case 'review-confirm'")[1].split("case 'export-data'")[0];
+  const fin = js.split("case 'review-confirm'")[1].split("case 'unrestrict'")[0];
   assert.doesNotMatch(fin, /fn:/, 'اعتماد/رفض/تنفيذ المهام بلا تراجع (مالية)');
   assert.doesNotMatch(js.split("case 'finance-add'")[1]?.split('\n')[0] || '', /fn:/);
 });
