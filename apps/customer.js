@@ -9,7 +9,7 @@
   const PARENT = { orders: 'buy', settings: 'account', security: 'account' };
 
   const DEMO = new URLSearchParams(location.search).get('demo') === '1'; // وضع المعاينة فقط: تعبئة بيانات الدخول وحساب العميل التجريبي
-  const ui = { id: sessionStorage.getItem('aman.customer') || '', route: 'home', auth: 'login', q: '', co: '', lookup: null, sheet: false, busy: false, view: null, pending: null, key: '', scroll: {} };
+  const ui = { limit: 0, id: sessionStorage.getItem('aman.customer') || '', route: 'home', auth: 'login', q: '', co: '', lookup: null, sheet: false, busy: false, view: null, pending: null, key: '', scroll: {} };
 
   /* ===================== الدخول وتذكر البريد (البريد فقط) ===================== */
   function rememberedCredentials() {
@@ -70,7 +70,7 @@
     closeSheet(); saveScroll();
     const d = histState()?.d || 0, st = { amanCustomer: true, route, d: replace ? d : d + 1 };
     (replace ? history.replaceState : history.pushState).call(history, st, '', '#/' + route);
-    if (route !== ui.route) { ui.q = ''; ui.co = ''; }
+    if (route !== ui.route) { ui.q = ''; ui.co = ''; ui.limit = 0; }
     ui.route = route;
     render({ top: true });
   }
@@ -86,7 +86,7 @@
       return;
     }
     const r = e.state?.amanCustomer ? e.state.route : hashRoute();
-    if (r !== ui.route) { ui.q = ''; ui.co = ''; }
+    if (r !== ui.route) { ui.q = ''; ui.co = ''; ui.limit = 0; }
     ui.route = ROUTES.includes(r) ? r : 'home';
     render({ restore: true });
   });
@@ -131,12 +131,27 @@
     tabbar.hidden = false;
     tabbar.innerHTML = TABS.map(([k, label, icon]) => `<button type="button" class="tab" data-act="go" data-to="${k}" ${k === (v.tab || 'home') ? 'aria-current="page"' : ''}>${K.ico(icon)}<span>${label}</span></button>`).join('');
     document.title = 'أمان | العميل';
+    applyPaging();
     if (opt.top) screen.scrollTop = 0; else if (opt.restore) screen.scrollTop = ui.scroll[ui.route] || 0; else screen.scrollTop = keepTop;
   }
   // تحديث القائمة وحدها أثناء الكتابة في البحث/الفلتر (تُبنى من جديد ببيانات وقيم البحث الحالية)
+  /* تحميل المزيد (56): القوائم الطويلة (أكثر من 30 صفًا في بطاقة واحدة) تُعرض على صفحات بعد العرض؛ لا يتغير بناء الشاشات */
+  const PAGE = 30;
+  function applyPaging() {
+    const lim = ui.limit || PAGE;
+    document.querySelectorAll('#screen .more-wrap').forEach(w => w.remove());
+    document.querySelectorAll('#screen .card').forEach(card => {
+      const rows = [...card.children].filter(e => e.classList.contains('row'));
+      rows.forEach(r => { r.hidden = false; });
+      if (rows.length <= lim) return;
+      rows.forEach((r, i) => { r.hidden = i >= lim; });
+      const w = document.createElement('div'); w.className = 'more-wrap';
+      w.innerHTML = K.btn(`تحميل المزيد (${N(rows.length - lim)} متبقٍ)`, 'load-more', 'small'); card.after(w);
+    });
+  }
   function refreshList() {
     const b = $('#listbody'); if (!b || !ui.view?.list) return;
-    try { const { d, c } = snapshot(); if (c) b.innerHTML = S.build(ui.route, d, c, ctxNow()).list(); } catch (e) { fatal(e); }
+    try { const { d, c } = snapshot(); if (c) { b.innerHTML = S.build(ui.route, d, c, ctxNow()).list(); applyPaging(); } } catch (e) { fatal(e); }
   }
   const ctxNow = () => ({ q: ui.q, co: ui.co, lookup: ui.lookup, theme: selectedTheme(), noticeDot: notificationsEnabled(), id: ui.id });
   // تحديث الرأس فقط (الرصيد ونقطة الإشعارات) دون إعادة بناء الشاشة، حتى لا يضيع ما يكتبه العميل
@@ -287,7 +302,8 @@
         case 'login-view': ui.auth = 'login'; render(); return;
         case 'search-again': ui.lookup = null; render(); return;
         case 'retry': retryLoad(); return;
-        case 'clear-filter': ui.q = ''; ui.co = ''; render(); return;
+        case 'clear-filter': ui.q = ''; ui.co = ''; ui.limit = 0; render(); return;
+        case 'load-more': ui.limit = (ui.limit || PAGE) + PAGE; applyPaging(); return;
         case 'toast-undo': {
           const u = ui.undo; ui.undo = null; $('#toast').classList.add('hidden');
           if (u) await run(async () => { await u.fn(); render(); toast('تم التراجع.'); });
@@ -413,7 +429,7 @@
   /* ===================== البحث والفلترة والإعدادات ===================== */
   document.addEventListener('input', e => {
     const t = e.target;
-    if (t.id === 'q') { ui.q = t.value; refreshList(); return; }
+    if (t.id === 'q') { ui.q = t.value; ui.limit = 0; refreshList(); return; }
     if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); // التعديل يزيل خطأ الحقل
     if (t.id === 's_pass') { // مؤشر قوة كلمة المرور: استرشادي فقط
       const m = $('#pass-strength'), s = K.passwordStrength(t.value);
@@ -427,7 +443,7 @@
   document.addEventListener('change', e => {
     const t = e.target;
     if (t.id === 'agree' || t.id === 'packageId' || t.id === 'paymentId') clearFieldError(t.id);
-    if (t.id === 'flt') { ui.co = t.value; refreshList(); return; }
+    if (t.id === 'flt') { ui.co = t.value; ui.limit = 0; refreshList(); return; }
     if (t.id === 'quickNumber') { const input = $('#search-number-input'); if (input) { input.value = t.value; input.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     if (t.id === 'paymentId') { const m = data().paymentMethods.find(x => x.id === t.value); const el = $('#paymentInstructions'); if (el) el.textContent = m?.instructions || 'لا توجد تعليمات'; return; }
     if (t.id === 'theme') { localStorage.setItem('aman.customer.theme', t.value); localStorage.setItem('aman.customer.dark', t.value === 'dark' ? '1' : '0'); applyTheme(); return; }
@@ -458,6 +474,26 @@
     render();
   });
   window.addEventListener('pageshow', () => { if (!ui.sheet) render(); });
+
+  /* ===================== السحب لتحديث البيانات (55) ===================== */
+  // من أعلى الشاشة؛ يعيد قراءة المخزن المحلي فقط ولا يعمل داخل الحقول أو النوافذ أو أثناء عملية جارية
+  (function pullToRefresh() {
+    let y0 = null, pulled = 0; const LIMIT = 70;
+    const ind = Object.assign(document.createElement('div'), { id: 'ptr', className: 'ptr hidden', role: 'status' });
+    document.querySelector('.phone')?.appendChild(ind);
+    const reset = () => { y0 = null; pulled = 0; ind.classList.add('hidden'); };
+    document.addEventListener('touchstart', e => {
+      const s = $('#screen');
+      if (!ui.id || ui.sheet || ui.busy || !s || !s.contains(e.target) || s.scrollTop > 0 || e.target.closest?.('input,textarea,select')) { y0 = null; return; }
+      y0 = e.touches[0].clientY; pulled = 0;
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (y0 == null) return; pulled = Math.max(0, e.touches[0].clientY - y0);
+      if (pulled > 12) { ind.textContent = pulled > LIMIT ? 'أفلت للتحديث' : 'اسحب للتحديث'; ind.classList.remove('hidden'); } else ind.classList.add('hidden');
+    }, { passive: true });
+    document.addEventListener('touchend', () => { const go = y0 != null && pulled > LIMIT; reset(); if (go) { render({}); toast('حُدّثت البيانات.'); } }, { passive: true });
+    document.addEventListener('touchcancel', reset, { passive: true });
+  })();
 
   /* ===================== حالة الاتصال (البند 38) ===================== */
   // التطبيق يعمل على بيانات هذا الجهاز؛ الشريط يوضّح الحالة فقط ولا يمنع أي عملية محلية

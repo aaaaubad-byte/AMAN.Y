@@ -254,3 +254,8 @@ body.offline .screen{padding-top:12px}
 .sk-row{height:68px}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 @media(prefers-reduced-motion:reduce){.sk{animation:none;background:var(--tile)}}
+
+/* ===== تحميل المزيد (56) والسحب للتحديث (55) ===== */
+.row[hidden]{display:none!important}
+.more-wrap{display:grid;margin-top:12px}
+.ptr{position:absolute;top:calc(8px + env(safe-area-inset-top));inset-inline:0;margin:0 auto;width:max-content;z-index:35;padding:8px 16px;border-radius:999px;background:var(--black);color:var(--on-black);font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.2)}

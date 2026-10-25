@@ -91,7 +91,7 @@ test('واجهة العميل تعرض قائمة أرقام الحساب مع �
   // شاشة الأرقام: قائمة الحساب + بحث + فلتر الشركة، وتُحدَّث القائمة وحدها أثناء الكتابة
   assert.match(screens,/function numbers\(d, c, x\)/);assert.match(screens,/const all = owned\(d, c\.id\);/);
   assert.match(screens,/K\.toolbar\('بحث برقم الهاتف'/);assert.match(screens,/\['', 'كل الشركات'\]/);assert.match(screens,/id="listbody" class="customer-number-list"/);
-  assert.match(shell,/if \(t\.id === 'q'\) \{ ui\.q = t\.value; refreshList\(\)/);assert.match(shell,/if \(t\.id === 'flt'\) \{ ui\.co = t\.value; refreshList\(\)/);
+  assert.match(shell,/if \(t\.id === 'q'\) \{ ui\.q = t\.value;( ui\.limit = 0;)? refreshList\(\)/);assert.match(shell,/if \(t\.id === 'flt'\) \{ ui\.co = t\.value;( ui\.limit = 0;)? refreshList\(\)/);
   // بحث الرئيسية: حقل رقم + قائمة اختيار صغيرة لأرقام الحساب، دون تكرار قائمة الأرقام
   const home=screens.slice(screens.indexOf('function home('),screens.indexOf('/* ===================== الأرقام والرادار'));
   assert.match(home,/id="quickNumber"/);assert.match(home,/name: 'number'/);assert.doesNotMatch(home,/numberRow\(/);

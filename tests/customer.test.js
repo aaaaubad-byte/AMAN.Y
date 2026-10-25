@@ -287,3 +287,15 @@ test('U1 (58 و24): تراجع لثوانٍ للإجراءات غير المال
   const longToasts = [...js.matchAll(/toast\('([^']+)'/g)].map(m => m[1]).filter(t => t.length > 60);
   assert.deepEqual(longToasts, [], 'الإشعارات قصيرة');
 });
+
+test('U2-د: تحميل المزيد والسحب للتحديث في العميل (55 و56) بلا تغيير في بناء الشاشات', () => {
+  const js = read('customer.js'), css = read('customer.css');
+  assert.match(js, /const PAGE = 30/);assert.match(js, /function applyPaging\(\)/);
+  assert.match(js, /case 'load-more': ui\.limit = \(ui\.limit \|\| PAGE\) \+ PAGE; applyPaging\(\)/);
+  assert.match(js, /\n    applyPaging\(\);\n    if \(opt\.top\)/, 'يُطبَّق بعد كل عرض');
+  assert.match(js, /b\.innerHTML = S\.build\(ui\.route, d, c, ctxNow\(\)\)\.list\(\); applyPaging\(\)/, 'ويُطبَّق بعد تحديث البحث');
+  assert.equal((js.match(/ui\.limit = 0/g) || []).length >= 5, true, 'إعادة الضبط عند تغيّر الشاشة والبحث والفلتر والمسح');
+  assert.match(css, /\.row\[hidden\]\{display:none!important\}/);
+  assert.match(js, /pullToRefresh/);assert.match(js, /s\.scrollTop > 0 \|\| e\.target\.closest\?\.\('input,textarea,select'\)/);
+  assert.match(js, /if \(go\) \{ render\(\{\}\); toast\('حُدّثت البيانات\.'\); \}/);
+});
