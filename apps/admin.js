@@ -86,8 +86,10 @@
   /* ===================== العرض ===================== */
   function fatal(e) {
     $('#screen').className = 'screen'; $('#bar').innerHTML = ''; $('#tabbar').hidden = true;
-    $('#screen').innerHTML = `<div class="card empty" style="margin-top:40px">${K.tile('info', 'bad')}<b>تعذر تحميل البيانات</b><p>${E(e.message)}</p><p>لم تُستبدل البيانات المحفوظة. صدّر نسخة احتياطية قبل أي تغيير في إعدادات المتصفح.</p></div>`;
+    $('#screen').innerHTML = `<div class="card empty" style="margin-top:40px">${K.tile('info', 'bad')}<b>تعذر تحميل البيانات</b><p>${E(e.message)}</p><p>لم تُستبدل البيانات المحفوظة. صدّر نسخة احتياطية قبل أي تغيير في إعدادات المتصفح.</p><div class="empty-action">${K.btn('إعادة المحاولة', 'retry', 'primary')}</div></div>`;
   }
+  // إعادة المحاولة (37): هيكل تحميل لحظة ثم إعادة العرض؛ لا تُكتب أي بيانات
+  function retryLoad() { const s = $('#screen'); s.className = 'screen'; s.innerHTML = K.skeleton(4); setTimeout(() => render({ top: true }), 350); }
   function render(opt = {}) {
     let d;
     try { d = D.read(); } catch (e) { fatal(e); return; }
@@ -130,12 +132,25 @@
   }
   function clearError() { document.querySelectorAll('#form-error').forEach(e => e.classList.add('hidden')); }
   const lockables = () => document.querySelectorAll('[data-submit],.btn[data-confirm]');
+  // تعطيل الأزرار مع مؤشر تقدم (26)؛ لا يُعاد تمكين زر كان معطّلًا أصلًا
   async function run(fn) {
     if (ui.busy) return false;
-    ui.busy = true; clearError(); lockables().forEach(b => b.disabled = true);
+    ui.busy = true; clearError();
+    const locked = [...lockables()].filter(b => !b.disabled);
+    locked.forEach(b => { b.disabled = true; b.classList.add('busy'); b.setAttribute('aria-busy', 'true'); });
     try { await fn(); return true; }
     catch (err) { showError(err?.message || 'تعذرت العملية ولم تُحفظ.'); return false; }
-    finally { ui.busy = false; lockables().forEach(b => b.disabled = false); }
+    finally { ui.busy = false; locked.forEach(b => { b.disabled = false; b.classList.remove('busy'); b.removeAttribute('aria-busy'); }); }
+  }
+  // نسخ مع إشعار بالنتيجة (16)
+  async function copyText(value, what) {
+    value = String(value ?? '');
+    if (!value) { toast(`لا يوجد ${what} للنسخ.`, true); return; }
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
+      else { const t = document.createElement('textarea'); t.value = value; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); if (!ok) throw new Error('copy'); }
+      toast(`تم نسخ ${what}.`);
+    } catch { toast(`تعذر النسخ. انسخه يدويًا: ${value}`, true); }
   }
   const formFoot = label => K.submitBtn(label, 'sheet-form') + K.btn('إلغاء', 'sheet-close');
   const errBox = '<div id="form-error" class="form-error hidden" role="alert"></div>';
@@ -195,6 +210,8 @@
       switch (a) {
         case 'go': go(b.dataset.to); return;
         case 'back': back(); return;
+        case 'retry': retryLoad(); return;
+        case 'copy': await copyText(b.dataset.copy, b.dataset.label || 'القيمة'); return;
         case 'tab': go(withTab(ui.route, b.dataset.tab), { replace: true, keepQuery: true }); return;
         case 'sheet-close': closeSheet(); return;
         case 'review-open': reviewSheet(id, b.dataset.decision); return;
@@ -291,6 +308,16 @@
     }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); } });
+
+  /* حالة الاتصال (38): تعمل الإدارة على بيانات هذا الجهاز؛ الشريط يوضّح الحالة ولا يمنع عملية محلية */
+  function netState(announce) {
+    const online = navigator.onLine !== false, bar = $('#netbar');
+    if (bar) { bar.classList.toggle('hidden', online); bar.textContent = online ? '' : 'لا يوجد اتصال بالإنترنت. بياناتك المحفوظة على هذا الجهاز ما زالت متاحة.'; }
+    if (announce && online) toast('عاد الاتصال بالإنترنت.');
+  }
+  window.addEventListener('online', () => netState(true));
+  window.addEventListener('offline', () => netState(false));
+  netState(false);
   window.addEventListener('storage', e => { if (e.key === D.KEY && ui.logged && !ui.sheet && !isForm(ui.route)) render(); });
   window.addEventListener('pageshow', () => { if (!ui.sheet && !isForm(ui.route)) render(); });
 

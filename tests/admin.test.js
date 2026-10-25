@@ -112,3 +112,22 @@ test('عزل الإدارة: لا تحمّل ملفات تصميم العميل 
     assert.doesNotMatch(src, /localStorage\.(setItem|getItem)\(\s*['"]AMAN_SHARED_REGISTRY/, f + ' يجب ألا يصل للمخزن مباشرة');
   }
 });
+
+/* ===== U2-أ: أساسيات الإدارة (16 و26 و36 و37 و38 و39) — نسخة مستقلة عن العميل ===== */
+test('U2-أ: مكوّنات الإدارة مستقلة وتشمل النسخ والهيكل والفراغ بإجراء وزر إعادة المحاولة وشريط الاتصال', () => {
+  const rd = f => require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'apps', f), 'utf8');
+  const kit = AmanAdminKit, js = rd('admin.js'), html = rd('admin.html'), css = rd('admin.css');
+  assert.match(kit.copyBtn('R"1<', 'المرجع'), /data-copy="R&quot;1&lt;" data-label="المرجع"[^>]*aria-label="نسخ المرجع"/);
+  assert.match(kit.skeleton(2), /role="status" aria-busy="true" aria-label="جارٍ التحميل"/);
+  assert.match(kit.empty('س', 'inbox', 'ع', '<i>x</i>'), /<div class="empty-action"><i>x<\/i><\/div>/);
+  assert.doesNotMatch(kit.empty('س'), /empty-action/);
+  assert.match(js, /K\.btn\('إعادة المحاولة', 'retry', 'primary'\)/);assert.match(js, /case 'retry': retryLoad\(\)/);
+  assert.match(js, /const locked = \[\.\.\.lockables\(\)\]\.filter\(b => !b\.disabled\)/, '26: لا يُعاد تمكين زر معطّل أصلًا');
+  assert.match(js, /aria-busy/);assert.match(css, /\.btn\.busy::after/);
+  assert.match(js, /addEventListener\('offline'/);assert.match(html, /id="netbar"[^>]*role="status"/);
+  assert.match(html, /<main id="screen"[^>]*><div class="skeleton"/);
+  assert.doesNotMatch(js + rd('admin-kit.js') + rd('admin-screens.js'), /AmanCustomer/, 'لا استيراد من ملفات العميل');
+  const d = D.seedData(); d.customers.push({ id: 'cc', accountId: 'A', name: 'ع', email: 'e@e.co', status: 'active', isSubscriber: false, createdAt: new Date().toISOString() });
+  D.setStorageForTests(store(JSON.stringify(d)));
+  assert.match(rd('admin-screens.js'), /K\.copyBtn\(r\.paymentReference, 'المرجع'\)[^]*K\.copyBtn\(r\.id, 'رقم الطلب'\)/, '16: نسخ المرجع ورقم الطلب في تفاصيل الطلب');
+});
