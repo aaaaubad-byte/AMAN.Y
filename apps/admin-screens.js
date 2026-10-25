@@ -48,13 +48,18 @@ ${K.card([
   }
 
   /* ------------------------------------------------------------------ */
+  /* تحميل المزيد (56): القوائم الطويلة تُعرض على صفحات؛ المتبقي بزر */
+  const PAGE = 30;
+  const paged = (rows, ui, draw) => { const lim = ui.limit || PAGE; return draw(rows.slice(0, lim)) + (rows.length > lim ? `<div class="more-wrap">${K.btn(`تحميل المزيد (${N(rows.length - lim)} متبقٍ)`, 'load-more', 'small')}</div>` : ''); };
+  /* حالة فارغة بنتيجة بحث: تعرض مسح البحث والتصفية (39) */
+  const emptyQ = (filtered, qText, otherText, icon) => filtered ? K.empty(qText, icon, '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small')) : K.empty(otherText, icon);
   function requests(d, a, ui) {
     const tab = ['pending', 'approved', 'rejected', 'all'].includes(a) ? a : 'pending';
     const cnt = k => d.purchaseRequests.filter(r => k === 'all' || r.status === k).length;
     const list = () => {
       const rows = d.purchaseRequests.filter(r => tab === 'all' || r.status === tab).filter(r => { const c = M.customer(d, r.customerId); return match(ui.q, c?.name, c?.email, r.id, r.paymentReference, r.packageSnapshot?.name, r.paymentMethodSnapshot?.name); }).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
-      if (!rows.length) return K.empty(ui.q ? 'لا توجد طلبات تطابق البحث.' : 'لا توجد طلبات في هذه القائمة.', 'receipt');
-      return K.card(rows.map(r => { const c = M.customer(d, r.customerId); return K.row({ icon: 'receipt', tone: r.status === 'pending' ? 'warn' : r.status === 'approved' ? 'ok' : 'bad', title: c?.name || 'عميل غير موجود', sub: `${E(r.packageSnapshot?.name || 'باقة قديمة')} · ${N(r.packageSnapshot?.points)} نقطة`, sub2: `${E(r.paymentMethodSnapshot?.name || '—')} · ${E(DT(r.createdAt))}`, val: YER(r.packageSnapshot?.price), pill: K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }); }));
+      if (!rows.length) return emptyQ(!!ui.q, 'لا توجد طلبات تطابق البحث.', 'لا توجد طلبات في هذه القائمة.', 'receipt');
+      return paged(rows, ui, rows => K.card(rows.map(r => { const c = M.customer(d, r.customerId); return K.row({ icon: 'receipt', tone: r.status === 'pending' ? 'warn' : r.status === 'approved' ? 'ok' : 'bad', title: c?.name || 'عميل غير موجود', sub: `${E(r.packageSnapshot?.name || 'باقة قديمة')} · ${N(r.packageSnapshot?.points)} نقطة`, sub2: `${E(r.paymentMethodSnapshot?.name || '—')} · ${E(DT(r.createdAt))}`, val: YER(r.packageSnapshot?.price), pill: K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }); })));
     };
     return { tab: 'requests', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">طلبات النقاط</h1><p class="lede">مراجعة طلبات شراء النقاط. الاعتماد يخص الطلب فقط.</p>
 ${K.tabs([['pending', 'المعلقة', cnt('pending')], ['approved', 'المعتمدة', cnt('approved')], ['rejected', 'المرفوضة', cnt('rejected')], ['all', 'الكل', cnt('all')]], tab, 'requests')}
@@ -81,8 +86,8 @@ ${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, s
     const base = () => d.tasks.filter(t => tab === 'all' ? ['due', 'planned', 'executed', 'cancelled'].includes(t.status) : M.taskAvailableNow(t, d, D));
     const list = () => {
       const rows = base().filter(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId); return match(ui.q, n?.number, co?.name, c?.name, c?.email, t.id); }).filter(t => ui.filter === 'all' || M.taskClass(t, d, D) === ui.filter).sort((x, y) => new Date(y.executedAt || y.dueAt) - new Date(x.executedAt || x.dueAt));
-      if (!rows.length) return K.empty(ui.q || ui.filter !== 'all' ? 'لا توجد مهام تطابق البحث.' : tab === 'all' ? 'لا توجد مهام.' : 'لا توجد مهام متاحة أو مستحقة الآن.', 'tasks');
-      return K.card(rows.map(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId), cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'overdue' ? 'bad' : cl === 'due' ? 'warn' : cl === 'completed' ? 'ok' : '', title: n?.number || 'رقم غير معروف', ltr: true, sub: `${E(co?.name || '—')} · ${E(c?.name || '—')}`, sub2: `الاستحقاق ${E(DT(t.dueAt))}`, val: YER(t.expenseAmount), pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); }));
+      if (!rows.length) return emptyQ(!!ui.q || ui.filter !== 'all', 'لا توجد مهام تطابق البحث.', tab === 'all' ? 'لا توجد مهام.' : 'لا توجد مهام متاحة أو مستحقة الآن.', 'tasks');
+      return paged(rows, ui, rows => K.card(rows.map(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId), cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'overdue' ? 'bad' : cl === 'due' ? 'warn' : cl === 'completed' ? 'ok' : '', title: n?.number || 'رقم غير معروف', ltr: true, sub: `${E(co?.name || '—')} · ${E(c?.name || '—')}`, sub2: `الاستحقاق ${E(DT(t.dueAt))}`, val: YER(t.expenseAmount), pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })));
     };
     const nAvail = d.tasks.filter(t => M.taskAvailableNow(t, d, D)).length;
     return { tab: 'tasks', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">المهام</h1><p class="lede">تنفيذ مهام الأرقام المؤهلة وتسجيل مصروفها مرة واحدة.</p>
@@ -115,8 +120,8 @@ ${t.financeEntryId && d.financeEntries.some(x => x.id === t.financeEntryId) ? K.
     const inTab = c => tab === 'all' || (tab === 'subscribers' ? sub(c) : !sub(c));
     const list = () => {
       const rows = d.customers.filter(inTab).filter(c => match(ui.q, c.name, c.email, c.accountId));
-      if (!rows.length) return K.empty(ui.q ? 'لا توجد نتائج مطابقة.' : 'لا توجد حسابات في هذه القائمة.', 'users');
-      return K.card(rows.map(c => K.row({ icon: 'user', tone: sub(c) ? 'dark' : '', title: c.name, sub: E(c.email), sub2: `${N(D.balance(c.id, d))} نقطة · ${N(D.customerNumbers(c.id, d).length)} رقم`, pill: K.pill(sub(c) ? 'مشترك' : 'غير مشترك', sub(c) ? 'ok' : ''), to: 'customer/' + c.id })));
+      if (!rows.length) return emptyQ(!!ui.q, 'لا توجد نتائج مطابقة.', 'لا توجد حسابات في هذه القائمة.', 'users');
+      return paged(rows, ui, rows => K.card(rows.map(c => K.row({ icon: 'user', tone: sub(c) ? 'dark' : '', title: c.name, sub: E(c.email), sub2: `${N(D.balance(c.id, d))} نقطة · ${N(D.customerNumbers(c.id, d).length)} رقم`, pill: K.pill(sub(c) ? 'مشترك' : 'غير مشترك', sub(c) ? 'ok' : ''), to: 'customer/' + c.id }))));
     };
     return { tab: 'customers', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">العملاء</h1><p class="lede">حسابات العملاء ورصيد نقاطهم.</p>
 ${K.tabs([['all', 'الكل', d.customers.length], ['subscribers', 'المشتركون', d.customers.filter(sub).length], ['users', 'غير مشتركين', d.customers.filter(c => !sub(c)).length]], tab, 'customers')}
@@ -148,12 +153,12 @@ ${K.tabs([['numbers', 'الأرقام', ns.length], ['requests', 'الطلبات
     const list = () => {
       if (tab === 'active') {
         const rows = d.subscriptions.filter(M.isLive).sort((x, y) => new Date(x.endsAt) - new Date(y.endsAt)).filter(s => { const n = M.number(d, s.numberId), c = M.customer(d, s.customerId || n?.customerId), co = M.company(d, s.companyId || n?.companyId); return match(ui.q, n?.number, c?.name, c?.email, co?.name); });
-        if (!rows.length) return K.empty(ui.q ? 'لا توجد نتائج تطابق البحث.' : 'لا توجد اشتراكات فعالة.', 'shield');
-        return K.card(rows.map(s => { const n = M.number(d, s.numberId), c = M.customer(d, s.customerId), co = M.company(d, s.companyId || n?.companyId); return K.row({ icon: 'shield', tone: 'ok', title: n?.number || '—', ltr: true, sub: `${E(c?.name || '—')} · ${E(co?.name || '—')}`, sub2: `ينتهي ${E(DY(s.endsAt))} · ${N(s.rateSnapshot)} نقطة/يوم`, pill: K.pill('فعال', 'ok'), to: n ? 'number/' + n.id : '' }); }));
+        if (!rows.length) return emptyQ(!!ui.q, 'لا توجد نتائج تطابق البحث.', 'لا توجد اشتراكات فعالة.', 'shield');
+        return paged(rows, ui, rows => K.card(rows.map(s => { const n = M.number(d, s.numberId), c = M.customer(d, s.customerId), co = M.company(d, s.companyId || n?.companyId); return K.row({ icon: 'shield', tone: 'ok', title: n?.number || '—', ltr: true, sub: `${E(c?.name || '—')} · ${E(co?.name || '—')}`, sub2: `ينتهي ${E(DY(s.endsAt))} · ${N(s.rateSnapshot)} نقطة/يوم`, pill: K.pill('فعال', 'ok'), to: n ? 'number/' + n.id : '' }); })));
       }
       const rows = d.numbers.filter(n => { const s = subOf(n), c = M.customer(d, s?.customerId || n.customerId), co = M.company(d, n.companyId); return match(ui.q, n.number, c?.name, c?.email, co?.name); }).filter(n => ui.filter === 'all' || (ui.filter === 'active') === !!subOf(n));
-      if (!rows.length) return K.empty(ui.q || ui.filter !== 'all' ? 'لا توجد نتائج تطابق البحث.' : 'لا توجد أرقام مضافة بعد.', 'phone');
-      return K.card(rows.map(n => { const s = subOf(n), c = M.customer(d, s?.customerId || n.customerId), co = M.company(d, n.companyId); return K.row({ icon: 'phone', tone: s ? 'ok' : '', title: n.number, ltr: true, sub: `${E(c?.name || '—')} · ${E(co?.name || '—')}`, sub2: s ? `ينتهي ${E(DY(s.endsAt))}` : 'لا يوجد اشتراك فعال', pill: n.restricted ? K.pill('مقيّد', 'bad') : K.pill(s ? 'فعال' : 'بلا اشتراك', s ? 'ok' : ''), to: 'number/' + n.id }); }));
+      if (!rows.length) return emptyQ(!!ui.q || ui.filter !== 'all', 'لا توجد نتائج تطابق البحث.', 'لا توجد أرقام مضافة بعد.', 'phone');
+      return paged(rows, ui, rows => K.card(rows.map(n => { const s = subOf(n), c = M.customer(d, s?.customerId || n.customerId), co = M.company(d, n.companyId); return K.row({ icon: 'phone', tone: s ? 'ok' : '', title: n.number, ltr: true, sub: `${E(c?.name || '—')} · ${E(co?.name || '—')}`, sub2: s ? `ينتهي ${E(DY(s.endsAt))}` : 'لا يوجد اشتراك فعال', pill: n.restricted ? K.pill('مقيّد', 'bad') : K.pill(s ? 'فعال' : 'بلا اشتراك', s ? 'ok' : ''), to: 'number/' + n.id }); })));
     };
     return { chrome: 'tabs', tab: 'more', list, html: `${K.bar('الأرقام والاشتراكات', 'حماية الأرقام ومدتها', K.tileAction('add-number-open', 'plus', 'إضافة رقم'))}
 ${K.tabs([['active', 'اشتراكات فعالة', d.subscriptions.filter(M.isLive).length], ['all', 'كل الأرقام', d.numbers.length]], tab, 'numbers')}
@@ -227,8 +232,8 @@ ${g('النظام', [
     const list = () => {
       const rows = o.items.filter(x => match(ui.q, o.text(x))).filter(x => ui.filter === 'all' || (ui.filter === 'active') === (x.active !== false));
       if (!o.items.length) return K.empty(o.empty, o.icon);
-      if (!rows.length) return K.empty('لا توجد نتائج تطابق البحث.', o.icon);
-      return K.card(rows.map(x => K.row({ icon: o.icon, title: x.name, sub: o.sub(x), sub2: o.sub2(x), pill: K.pill(x.active === false ? 'متوقفة' : o.on, x.active === false ? 'bad' : 'ok'), to: o.base + '/' + x.id })));
+      if (!rows.length) return K.empty('لا توجد نتائج تطابق البحث.', o.icon, '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
+      return paged(rows, ui, rows => K.card(rows.map(x => K.row({ icon: o.icon, title: x.name, sub: o.sub(x), sub2: o.sub2(x), pill: K.pill(x.active === false ? 'متوقفة' : o.on, x.active === false ? 'bad' : 'ok'), to: o.base + '/' + x.id }))));
     };
     return { chrome: 'tabs', tab: 'more', list, html: `${K.bar(o.title, o.sub0, K.tileAction('go', 'plus', o.add, `data-to="${o.base}/new"`))}${K.toolbar(o.placeholder, ui.q, statusOpts, ui.filter)}<div id="listbody">${list()}</div>` };
   }
@@ -357,7 +362,7 @@ ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(lo
     const all = d.operations.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     const list = () => {
       const rows = all.filter(o => match(ui.q, o.summary, o.type, o.entityType, o.entityId, o.actorId));
-      if (!rows.length) return K.empty(ui.q ? 'لا توجد أحداث تطابق البحث.' : 'لا توجد أحداث مسجلة بعد.', 'audit');
+      if (!rows.length) return emptyQ(!!ui.q, 'لا توجد أحداث تطابق البحث.', 'لا توجد أحداث مسجلة بعد.', 'audit');
       return K.card(rows.slice(0, 300).map(o => K.row({ icon: 'audit', title: o.summary || o.type || 'عملية', sub: `${E(o.type || '—')} · ${E(o.entityType || '—')}`, sub2: `${E(DT(o.createdAt))} · المنفذ ${E(o.actorId || 'system')}`, pill: K.pill(o.result || 'success', (o.result || 'success') === 'success' ? 'ok' : 'bad') }))) + (rows.length > 300 ? K.note('يعرض أحدث 300 حدث من أصل ' + N(rows.length) + '.') : '');
     };
     return { chrome: 'tabs', tab: 'more', list, html: `${K.bar('سجل التدقيق', 'أحداث المخزن المحلي')}<p class="note" style="margin-top:-6px">سجل محلي للأحداث المسجلة داخل هذه المعاينة؛ لا يمثل سجلًا آمنًا ضد تعديل بيانات المتصفح.</p>${K.toolbar('ابحث في الأحداث', ui.q)}<div id="listbody">${list()}</div>` };

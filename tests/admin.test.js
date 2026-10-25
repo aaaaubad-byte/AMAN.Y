@@ -144,3 +144,18 @@ test('U2-ب: أخطاء الحقول بجانبها وEnter والتركيز ا�
   assert.match(js, /v\.chrome === 'form' && !opt\.restore/);
   for (const id of ['l_email', 'l_pass']) assert.match(login, new RegExp(`id="${id}-err"`));
 });
+
+test('U2-ج: تحميل المزيد والسحب للتحديث والتراجع غير المالي ومسح التصفية في الإدارة (24 و39 و55 و56 و58)', () => {
+  const rd = f => require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'apps', f), 'utf8');
+  const js = rd('admin.js'), sc = rd('admin-screens.js');
+  assert.equal((sc.match(/return paged\(rows, ui, rows => K\.card\(rows\.map\(/g) || []).length, 6, 'القوائم الطويلة كلها مقسمة');
+  assert.match(sc, /const PAGE = 30/);assert.match(js, /case 'load-more': ui\.limit = \(ui\.limit \|\| 30\) \+ 30/);
+  assert.match(js, /if \(e\.target\.id === 'q'\) \{ ui\.q = e\.target\.value; ui\.limit = 0/, 'البحث يعيد الصفحة الأولى');
+  assert.match(sc, /emptyQ = \(filtered, qText, otherText, icon\)/);assert.match(js, /case 'clear-filter'/);
+  assert.match(js, /pullToRefresh/);assert.match(js, /s\.scrollTop > 0 \|\| e\.target\.closest\?\.\('input,textarea,select'\)/, 'لا سحب داخل حقل أو بعد التمرير');
+  assert.match(js, /function toast\(text, bad = false, undo = null\)/);assert.match(js, /case 'toast-undo'/);
+  assert.match(js, /number_restriction_restored/);assert.match(js, /تراجع عن تحديث إعداد إداري/);
+  const fin = js.split("case 'review-confirm'")[1].split("case 'export-data'")[0];
+  assert.doesNotMatch(fin, /fn:/, 'اعتماد/رفض/تنفيذ المهام بلا تراجع (مالية)');
+  assert.doesNotMatch(js.split("case 'finance-add'")[1]?.split('\n')[0] || '', /fn:/);
+});

@@ -61,7 +61,7 @@
     const d = histState()?.d || 0, st = { amanAdmin: true, route, d: replace ? d : d + 1 };
     (replace ? history.replaceState : history.pushState).call(history, st, '', '#/' + route);
     if (ui.route.split('/')[0] !== route.split('/')[0]) { if (!keepQuery) ui.q = ''; }
-    ui.filter = 'all';
+    ui.filter = 'all'; ui.limit = 0;
     ui.route = route;
     render({ top: true });
   }
@@ -78,7 +78,7 @@
       return;
     }
     const r = e.state?.amanAdmin ? e.state.route : hashRoute();
-    if (r !== ui.route) { ui.q = ''; ui.filter = 'all'; }
+    if (r !== ui.route) { ui.q = ''; ui.filter = 'all'; ui.limit = 0; }
     ui.route = r;
     render({ restore: true });
   });
@@ -119,9 +119,13 @@
   function refreshList() { const b = $('#listbody'); if (b && ui.view) b.innerHTML = ui.view.list ? ui.view.list() : ui.view.results ? ui.view.results() : b.innerHTML; }
 
   /* ===================== التنبيه والنوافذ ===================== */
-  function toast(text, bad = false) {
-    const e = $('#toast'); e.textContent = text; e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad); e.classList.toggle('up', !!$('#bar .actionbar'));
-    clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hidden'), 3800);
+  /* إشعار قصير (58). undo = { fn, label? } للإجراءات الإدارية غير المالية القابلة للعكس بأمان فقط (24)؛ لا تراجع للاعتماد/الرفض/التنفيذ/القيود. */
+  function toast(text, bad = false, undo = null) {
+    const e = $('#toast'); clearTimeout(toast.t); ui.undo = undo;
+    e.replaceChildren(Object.assign(document.createElement('span'), { textContent: text }));
+    if (undo) { const b = Object.assign(document.createElement('button'), { type: 'button', className: 'toast-undo', textContent: undo.label || 'تراجع' }); b.dataset.act = 'toast-undo'; e.append(b); }
+    e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad); e.classList.toggle('has-undo', !!undo); e.classList.toggle('up', !!$('#bar .actionbar'));
+    toast.t = setTimeout(() => { e.classList.add('hidden'); ui.undo = null; }, undo ? 6500 : 3800);
   }
   function openSheet(title, body, foot) {
     ui.sheet = true; $('#sheetRoot').innerHTML = K.sheet(title, body, foot);
@@ -234,6 +238,9 @@
         case 'go': go(b.dataset.to); return;
         case 'back': back(); return;
         case 'retry': retryLoad(); return;
+        case 'clear-filter': ui.q = ''; ui.filter = 'all'; ui.limit = 0; render(); return;
+        case 'load-more': ui.limit = (ui.limit || 30) + 30; refreshList(); return;
+        case 'toast-undo': { const u = ui.undo; ui.undo = null; $('#toast').classList.add('hidden'); if (u) await run(async () => { await u.fn(); render(); toast('تم التراجع.'); }); return; }
         case 'copy': await copyText(b.dataset.copy, b.dataset.label || 'القيمة'); return;
         case 'tab': go(withTab(ui.route, b.dataset.tab), { replace: true, keepQuery: true }); return;
         case 'sheet-close': closeSheet(); return;
@@ -251,7 +258,9 @@
           await run(async () => { await D.reviewPurchase(ADMIN, id, decision, note); closeSheet(); toast(decision === 'approved' ? 'اعتُمد الطلب: أُضيفت النقاط وسُجل الإيراد مرة واحدة، ولم يُنشأ اشتراك.' : 'رُفض الطلب دون نقاط أو إيراد.'); render(); }); return;
         }
         case 'execute-confirm': await run(async () => { await D.executeTask(ADMIN, id); closeSheet(); toast('نُفذت المهمة وسُجل مصروفها ومهمتها التالية وفق الخطة.'); render(); }); return;
-        case 'unrestrict': await run(async () => { await D.transact(ADMIN, 'number_restriction_cleared', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); delete n.restricted; delete n.restrictionReason; delete n.restrictedAt; return { entityType: 'number', entityId: n.id, summary: `رفع تقييد الرقم ${n.number}` }; }); toast('رُفع التقييد الإداري عن الرقم.'); render(); }); return;
+        case 'unrestrict': await run(async () => { const prev = (({ restricted, restrictionReason, restrictedAt }) => ({ restricted, restrictionReason, restrictedAt }))(D.read().numbers.find(x => x.id === id) || {});
+          await D.transact(ADMIN, 'number_restriction_cleared', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); delete n.restricted; delete n.restrictionReason; delete n.restrictedAt; return { entityType: 'number', entityId: n.id, summary: `رفع تقييد الرقم ${n.number}` }; });
+          render(); toast('رُفع التقييد عن الرقم.', false, { fn: () => D.transact(ADMIN, 'number_restriction_restored', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); Object.entries(prev).forEach(([k, v]) => { if (v !== undefined) n[k] = v; }); return { entityType: 'number', entityId: n.id, summary: `استعادة تقييد الرقم ${n.number}` }; }) }); }); return;
         case 'export-data': {
           const payload = D.exportJSON(), blob = new Blob([payload], { type: 'application/json' }), url = URL.createObjectURL(blob), link = document.createElement('a'), stamp = new Date().toISOString().replace(/[:.]/g, '-');
           link.href = url; link.download = `aman-local-backup-${stamp}.json`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -314,10 +323,10 @@
   });
 
   /* ===================== البحث والفلترة والإعدادات ===================== */
-  document.addEventListener('input', e => { if (e.target.id === 'q') { ui.q = e.target.value; refreshList(); } });
+  document.addEventListener('input', e => { if (e.target.id === 'q') { ui.q = e.target.value; ui.limit = 0; refreshList(); } });
   document.addEventListener('change', async e => {
     const t = e.target;
-    if (t.id === 'flt') { ui.filter = t.value; refreshList(); return; }
+    if (t.id === 'flt') { ui.filter = t.value; ui.limit = 0; refreshList(); return; }
     if (t.name === 'audience' && t.closest('#sheet-form')) { $('#notice-customer')?.classList.toggle('hidden', t.value !== 'customer'); return; }
     if (t.id === 'adminDark' || t.dataset.setting) {
       await run(async () => {
@@ -327,6 +336,12 @@
           return { entityType: 'admin_setting', entityId: t.id || t.dataset.setting, summary: 'تحديث إعداد إداري' };
         });
         render();
+        const was = !t.checked;
+        toast('حُفظ الإعداد.', false, { fn: () => D.transact(ADMIN, 'admin_setting_changed', d => {
+          if (t.id === 'adminDark') { d.admin.darkMode = was; localStorage.setItem('aman.customer.theme', was ? 'dark' : 'light'); localStorage.setItem('aman.customer.dark', was ? '1' : '0'); }
+          else d.notificationSettings[t.dataset.setting] = was;
+          return { entityType: 'admin_setting', entityId: t.id || t.dataset.setting, summary: 'تراجع عن تحديث إعداد إداري' };
+        }) });
       });
     }
   });
@@ -343,6 +358,25 @@
   });
   document.addEventListener('input', e => { const t = e.target; if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); });
   document.addEventListener('change', e => { const t = e.target; if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); });
+
+  /* السحب لتحديث البيانات (55): من أعلى الشاشة؛ يعيد قراءة المخزن المحلي فقط ولا يعمل داخل نافذة أو نموذج */
+  (function pullToRefresh() {
+    let y0 = null, pulled = 0; const LIMIT = 70;
+    const ind = Object.assign(document.createElement('div'), { id: 'ptr', className: 'ptr hidden', role: 'status' });
+    document.querySelector('.phone')?.appendChild(ind);
+    const reset = () => { y0 = null; pulled = 0; ind.classList.add('hidden'); };
+    document.addEventListener('touchstart', e => {
+      const s = $('#screen');
+      if (!ui.logged || ui.sheet || ui.busy || !s || !s.contains(e.target) || s.scrollTop > 0 || e.target.closest?.('input,textarea,select')) { y0 = null; return; }
+      y0 = e.touches[0].clientY; pulled = 0;
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (y0 == null) return; pulled = Math.max(0, e.touches[0].clientY - y0);
+      if (pulled > 12) { ind.textContent = pulled > LIMIT ? 'أفلت للتحديث' : 'اسحب للتحديث'; ind.classList.remove('hidden'); } else ind.classList.add('hidden');
+    }, { passive: true });
+    document.addEventListener('touchend', () => { const go = y0 != null && pulled > LIMIT; reset(); if (go) { render({}); toast('حُدّثت البيانات.'); } }, { passive: true });
+    document.addEventListener('touchcancel', reset, { passive: true });
+  })();
 
   /* حالة الاتصال (38): تعمل الإدارة على بيانات هذا الجهاز؛ الشريط يوضّح الحالة ولا يمنع عملية محلية */
   function netState(announce) {

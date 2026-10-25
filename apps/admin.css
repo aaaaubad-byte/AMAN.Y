@@ -238,3 +238,9 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .field.invalid{background:var(--bad-bg);box-shadow:inset 0 0 0 1.5px var(--bad)}
 .auth .ferr{color:#ff9c93}
 .auth .afield.invalid{box-shadow:inset 0 0 0 1.5px #ff8a80}
+
+/* ===== تراجع الإشعار (24/58) وتحميل المزيد (56) والسحب للتحديث (55) ===== */
+.toast.has-undo{display:flex;align-items:center;justify-content:center;gap:14px}
+.toast-undo{flex:none;min-height:40px;padding:0 6px;font-weight:700;text-decoration:underline;color:inherit}
+.more-wrap{display:grid;margin-top:12px}
+.ptr{position:absolute;top:calc(8px + env(safe-area-inset-top));inset-inline:0;margin:0 auto;width:max-content;z-index:35;padding:8px 16px;border-radius:999px;background:var(--black);color:var(--on-black);font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.2)}
