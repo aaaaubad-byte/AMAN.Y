@@ -82,10 +82,10 @@
   const field = (o) => {
     const id = 'f_' + o.name, v = o.value ?? '', req = o.required ? 'required' : '';
     let ctl;
-    if (o.type === 'select') ctl = `<select id="${id}" name="${esc(o.name)}" ${req}>${o.options.map(([k, l]) => `<option value="${esc(k)}" ${String(k) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-    else if (o.type === 'textarea') ctl = `<textarea id="${id}" name="${esc(o.name)}" ${req} ${o.minlength ? `minlength="${o.minlength}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} rows="${o.rows || 4}">${esc(v)}</textarea>`;
-    else ctl = `<input id="${id}" name="${esc(o.name)}" type="${o.type || 'text'}" value="${esc(v)}" ${req} ${o.min != null ? `min="${o.min}"` : ''} ${o.step ? `step="${o.step}"` : ''} ${o.inputmode ? `inputmode="${o.inputmode}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} ${o.dir ? `dir="${o.dir}"` : ''} ${o.autocomplete ? `autocomplete="${o.autocomplete}"` : 'autocomplete="off"'}>`;
-    return `<div class="field"><label for="${id}">${esc(o.label)}</label>${ctl}${o.help ? `<small>${esc(o.help)}</small>` : ''}</div>`;
+    if (o.type === 'select') ctl = `<select id="${id}" name="${esc(o.name)}" ${req} aria-describedby="${id}-err">${o.options.map(([k, l]) => `<option value="${esc(k)}" ${String(k) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    else if (o.type === 'textarea') ctl = `<textarea id="${id}" name="${esc(o.name)}" ${req} aria-describedby="${id}-err" ${o.minlength ? `minlength="${o.minlength}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} rows="${o.rows || 4}">${esc(v)}</textarea>`;
+    else ctl = `<input id="${id}" name="${esc(o.name)}" type="${o.type || 'text'}" value="${esc(v)}" ${req} ${o.min != null ? `min="${o.min}"` : ''} ${o.step ? `step="${o.step}"` : ''} ${o.inputmode ? `inputmode="${o.inputmode}"` : ''} ${o.placeholder ? `placeholder="${esc(o.placeholder)}"` : ''} ${o.dir ? `dir="${o.dir}"` : ''} ${o.autocomplete ? `autocomplete="${o.autocomplete}"` : 'autocomplete="off"'} aria-describedby="${id}-err">`;
+    return `<div class="field"><label for="${id}">${esc(o.label)}</label>${ctl}${o.help ? `<small>${esc(o.help)}</small>` : ''}<small class="ferr hidden" id="${id}-err" role="alert"></small></div>`;
   };
   const toggle = (name, label, checked, help = '', attrs = '') => `<label class="toggle"><span>${esc(label)}${help ? `<small>${esc(help)}</small>` : ''}</span><input class="switch" type="checkbox" role="switch" name="${esc(name)}" ${checked ? 'checked' : ''} ${attrs}></label>`;
   const fields = html => `<div class="fields">${html}</div>`;

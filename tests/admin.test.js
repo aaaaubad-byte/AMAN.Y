@@ -131,3 +131,16 @@ test('U2-أ: مكوّنات الإدارة مستقلة وتشمل النسخ و
   D.setStorageForTests(store(JSON.stringify(d)));
   assert.match(rd('admin-screens.js'), /K\.copyBtn\(r\.paymentReference, 'المرجع'\)[^]*K\.copyBtn\(r\.id, 'رقم الطلب'\)/, '16: نسخ المرجع ورقم الطلب في تفاصيل الطلب');
 });
+
+test('U2-ب: أخطاء الحقول بجانبها وEnter والتركيز التلقائي في الإدارة (13 و14 و15)', () => {
+  const rd = f => require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'apps', f), 'utf8');
+  const html = AmanAdminKit.field({ name: 'name', label: 'الاسم', required: true });
+  assert.match(html, /aria-describedby="f_name-err"/);assert.match(html, /id="f_name-err" role="alert"/);
+  assert.match(AmanAdminKit.field({ name: 'k', label: 'ك', type: 'select', options: [['a', 'أ']] }), /f_k-err/);
+  const js = rd('admin.js'), login = rd('admin-screens.js');
+  assert.match(js, /addEventListener\('invalid'/);assert.match(js, /setFieldError\('l_pass'/);
+  assert.match(js, /if \(missing && missing !== t\) \{ e\.preventDefault\(\); missing\.focus\(\); \}/);
+  assert.match(js, /if \(ui\.busy\) \{ e\.preventDefault\(\); return; \}/);
+  assert.match(js, /v\.chrome === 'form' && !opt\.restore/);
+  for (const id of ['l_email', 'l_pass']) assert.match(login, new RegExp(`id="${id}-err"`));
+});

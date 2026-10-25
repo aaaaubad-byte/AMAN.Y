@@ -97,7 +97,9 @@
     const screen = $('#screen'), tabbar = $('#tabbar'), barEl = $('#bar'), keepTop = screen.scrollTop;
     if (!ui.logged) {
       const v = S.login(rememberedCredentials('admin'), ui.demo);
-      ui.view = v; screen.className = 'screen auth dark-auth'; screen.innerHTML = v.html; barEl.innerHTML = ''; tabbar.hidden = true; return;
+      ui.view = v; screen.className = 'screen auth dark-auth'; screen.innerHTML = v.html; barEl.innerHTML = ''; tabbar.hidden = true;
+      { const els = [...screen.querySelectorAll('input:not([type=checkbox]):not([type=hidden])')]; (els.find(i => !i.value) || els[0])?.focus({ preventScroll: true }); }
+      return;
     }
     const v = S.build(ui.route, d, ui); ui.view = v;
     let html = v.html;
@@ -112,6 +114,7 @@
     document.title = (v.title ? v.title + ' | ' : '') + 'أمان | الإدارة';
     if (opt.top) screen.scrollTop = 0; else if (opt.restore) screen.scrollTop = ui.scroll[ui.route] || 0; else screen.scrollTop = keepTop;
     if (v.autofocus && !opt.restore) $('#q')?.focus();
+    else if (v.chrome === 'form' && !opt.restore) [...screen.querySelectorAll('input:not([type=hidden]):not([type=checkbox]),textarea,select')].find(i => !i.value)?.focus({ preventScroll: true });
   }
   function refreshList() { const b = $('#listbody'); if (b && ui.view) b.innerHTML = ui.view.list ? ui.view.list() : ui.view.results ? ui.view.results() : b.innerHTML; }
 
@@ -135,13 +138,33 @@
   // تعطيل الأزرار مع مؤشر تقدم (26)؛ لا يُعاد تمكين زر كان معطّلًا أصلًا
   async function run(fn) {
     if (ui.busy) return false;
-    ui.busy = true; clearError();
+    ui.busy = true; clearError(); clearFieldErrors();
     const locked = [...lockables()].filter(b => !b.disabled);
     locked.forEach(b => { b.disabled = true; b.classList.add('busy'); b.setAttribute('aria-busy', 'true'); });
     try { await fn(); return true; }
     catch (err) { showError(err?.message || 'تعذرت العملية ولم تُحفظ.'); return false; }
     finally { ui.busy = false; locked.forEach(b => { b.disabled = false; b.classList.remove('busy'); b.removeAttribute('aria-busy'); }); }
   }
+  /* أخطاء بجانب الحقول (13) */
+  const fieldBox = id => document.getElementById(id)?.closest('.field,.afield');
+  function setFieldError(id, msg) {
+    const input = document.getElementById(id), box = document.getElementById(id + '-err');
+    if (!input || !box) return false;
+    box.textContent = msg; box.classList.remove('hidden'); input.setAttribute('aria-invalid', 'true'); fieldBox(id)?.classList.add('invalid'); return true;
+  }
+  function clearFieldError(id) {
+    const input = document.getElementById(id), box = document.getElementById(id + '-err');
+    if (box) { box.textContent = ''; box.classList.add('hidden'); }
+    input?.removeAttribute('aria-invalid'); fieldBox(id)?.classList.remove('invalid');
+  }
+  const clearFieldErrors = () => document.querySelectorAll('.ferr').forEach(b => b.id && clearFieldError(b.id.replace(/-err$/, '')));
+  // التحقق الأصلي للمتصفح (required/minlength) يُعرض بجانب الحقل بدل فقاعة المتصفح
+  document.addEventListener('invalid', e => {
+    e.preventDefault(); const t = e.target; if (!t.id) return;
+    const msg = t.validity.valueMissing ? 'هذا الحقل مطلوب.' : t.validity.tooShort ? 'القيمة أقصر من الحد الأدنى.' : t.validity.typeMismatch ? 'الصيغة غير صحيحة.' : (t.validationMessage || 'القيمة غير صالحة.');
+    if (!t.form?.querySelector('[aria-invalid=true]')) t.focus?.();
+    setFieldError(t.id, msg);
+  }, true);
   // نسخ مع إشعار بالنتيجة (16)
   async function copyText(value, what) {
     value = String(value ?? '');
@@ -267,7 +290,7 @@
     const f = e.target, kind = f.dataset.form, fd = new FormData(f);
     if (kind === 'login') {
       const email = String(fd.get('email')).trim().toLowerCase(), password = String(fd.get('password')), remember = fd.get('remember') === 'on';
-      if (email !== 'admin@aman.test' || password !== 'admin1234') { showError('بيانات الإدارة التجريبية غير صحيحة.'); return; }
+      if (email !== 'admin@aman.test' || password !== 'admin1234') { clearFieldErrors(); setFieldError('l_pass', 'بيانات الإدارة التجريبية غير صحيحة.'); document.getElementById('l_pass')?.focus(); return; }
       saveRememberedCredentials('admin', email, remember);
       sessionStorage.setItem('aman.admin', '1'); ui.logged = true;
       history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
@@ -307,7 +330,19 @@
       });
     }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); } });
+  /* اختصارات (15): Esc يغلق النافذة؛ Enter لا يرسل والحقول المطلوبة ناقصة (ينتقل لأول ناقص) ولا أثناء عملية جارية */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); return; }
+    if (e.key !== 'Enter' || e.isComposing) return;
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'button', 'submit'].includes(t.type)) return;
+    const form = t.closest('form[data-form]'); if (!form) return;
+    if (ui.busy) { e.preventDefault(); return; }
+    const missing = [...form.querySelectorAll('input[required]:not([type=hidden]),select[required],textarea[required]')].find(c => !String(c.value).trim());
+    if (missing && missing !== t) { e.preventDefault(); missing.focus(); }
+  });
+  document.addEventListener('input', e => { const t = e.target; if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); });
+  document.addEventListener('change', e => { const t = e.target; if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); });
 
   /* حالة الاتصال (38): تعمل الإدارة على بيانات هذا الجهاز؛ الشريط يوضّح الحالة ولا يمنع عملية محلية */
   function netState(announce) {
