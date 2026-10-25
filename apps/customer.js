@@ -175,7 +175,7 @@
     try {
       const { d, c } = snapshot(); if (!c) return render();
       const bal = $('#balance'); if (bal) bal.textContent = `${N(D.balance(c.id, d))} نقطة`;
-      const dot = $('#unreadDot'); if (dot) dot.classList.toggle('hidden', !(notificationsEnabled() && S.notices(d, c.id).some(n => !n.readAt)));
+      const dot = $('#unreadDot'); if (dot) { const n = notificationsEnabled() ? S.notices(d, c.id).filter(x => !x.readAt).length : 0; dot.textContent = n ? (n > 9 ? '9+' : N(n)) : ''; dot.classList.toggle('hidden', !n); }
     } catch { /* يظهر الخطأ عند إعادة العرض التالية */ }
   }
 
@@ -371,7 +371,17 @@
         }
         case 'operation-detail': {
           const v = S.operationDetail(data(), b.dataset.kind, id, data().customers[0]); if (!v) return;
-          openSheet(v.title, v.body, K.btn('إغلاق', 'sheet-close', 'primary')); return;
+          openSheet(v.title, v.body, (v.foot || '') + K.btn('إغلاق', 'sheet-close', v.foot ? '' : 'primary')); return;
+        }
+        case 'order-cancel': {
+          await D.cancelPurchase(ui.id, id); closeSheet(); render(); toast('أُلغي الطلب. لم تُخصم أو تُضف أي نقاط.'); return;
+        }
+        case 'order-resubmit': { // يملأ الباقة ووسيلة الدفع من الطلب المرفوض ويطلب مرجعًا جديدًا
+          const r = data().purchaseRequests.find(x => x.id === id && x.customerId === ui.id);
+          if (!r || r.status !== 'rejected') { toast('لا يمكن إعادة تقديم هذا الطلب.', true); return; }
+          const d0 = data(), okP = d0.packages.some(p => p.id === r.packageId && p.active !== false), okM = d0.paymentMethods.some(m => m.id === r.paymentMethodId && m.active !== false);
+          ui.buy = { step: okP && okM ? 3 : okP ? 2 : 1, packageId: okP ? r.packageId : '', paymentId: okM ? r.paymentMethodId : '', reference: '', touched: true };
+          closeSheet(); go('buy'); toast(okP && okM ? 'أدخل مرجع تحويل جديد لإعادة التقديم.' : 'الباقة أو وسيلة الدفع لم تعد متاحة؛ اختر من المتاح.'); return;
         }
         case 'terms': case 'privacy': {
           const content = data().content?.[a] || 'لم يضف المسؤول نصًا بعد.';

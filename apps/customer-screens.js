@@ -3,7 +3,7 @@
   'use strict';
   const D = AmanData, U = AmanUI, K = AmanCustomerKit, E = K.esc, N = U.fmt;
 
-  const LABEL = { pending: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض', active: 'فعال', expired: 'منتهٍ', planned: 'مخطط', due: 'مستحق', executed: 'منفذ', extended: 'ممدد' };
+  const LABEL = { pending: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض', cancelled: 'ملغى', active: 'فعال', expired: 'منتهٍ', planned: 'مخطط', due: 'مستحق', executed: 'منفذ', extended: 'ممدد' };
   const TONE = { pending: 'warn', approved: 'ok', rejected: 'bad' };
   const label = s => LABEL[s] || E(s);
   const OP_LABEL = { subscribe: 'اشتراك حماية', extend: 'تمديد حماية', renew: 'تجديد حماية' };
@@ -67,8 +67,8 @@
     return `<div class="result">${head('shield', '', 'الحماية غير مفعّلة في أمان')}${K.kv([co, ['حالة الحماية', 'غير مفعّلة']])}${K.note('الحالة المعروضة تخص بيانات أمان.')}${act('تفعيل الحماية', 'subscribe')}${r.added ? K.note('الرقم مضاف إلى حسابك بالفعل.') : K.btn('إضافة إلى أرقامي', 'add-search-number', '', `data-number="${E(r.number)}"`)}</div>`;
   }
   function home(d, c, x) {
-    const ns = owned(d, c.id), unread = x.noticeDot && notices(d, c.id).some(n => !n.readAt);
-    const lead = `<div class="lead" id="top">${K.tileAction('go', 'user', 'الحساب', 'data-to="account"')}<div class="lead-end"><button type="button" class="tile-btn" data-act="go" data-to="notifications" aria-label="الإشعارات">${K.ico('bell')}<i id="unreadDot" class="dot ${unread ? '' : 'hidden'}"></i></button><button type="button" id="balance" class="chip-black" data-act="go" data-to="points">${N(D.balance(c.id, d))} نقطة</button></div></div>`;
+    const ns = owned(d, c.id), unreadN = x.noticeDot ? notices(d, c.id).filter(n => !n.readAt).length : 0;
+    const lead = `<div class="lead" id="top">${K.tileAction('go', 'user', 'الحساب', 'data-to="account"')}<div class="lead-end"><button type="button" class="tile-btn" data-act="go" data-to="notifications" aria-label="الإشعارات${unreadN ? ` (${N(unreadN)} جديد)` : ''}">${K.ico('bell')}<i id="unreadDot" class="dot ${unreadN ? '' : 'hidden'}">${unreadN ? (unreadN > 9 ? '9+' : N(unreadN)) : ''}</i></button><button type="button" id="balance" class="chip-black" data-act="go" data-to="points">${N(D.balance(c.id, d))} نقطة</button></div></div>`;
     const picker = ns.length ? `<div style="margin-top:10px"><label class="select block">${K.ico('caret')}<select id="quickNumber" aria-label="اختيار رقم من أرقام حسابك"><option value="">اختر من أرقام حسابك</option>${ns.map(n => `<option value="${E(n.number)}">${E(n.number)}</option>`).join('')}</select></label></div>` : '';
     const body = x.lookup
       ? `<section class="card pad inquiry-result-card">${resultView(x.lookup)}<div style="margin-top:12px">${K.btn('بحث عن رقم آخر', 'search-again', '', '', 'search')}</div></section>`
@@ -165,9 +165,9 @@
   }
   // مراحل الطلب: أُرسل ← قيد المراجعة ← مقبول/مرفوض (بند 31). تعرض الحالة الحالية دون تغيير البيانات المخزنة.
   function requestStages(r) {
-    const final = r.status === 'approved' ? ['مقبول', 'ok'] : r.status === 'rejected' ? ['مرفوض', 'bad'] : ['مقبول / مرفوض', ''];
+    const final = r.status === 'approved' ? ['مقبول', 'ok'] : r.status === 'rejected' ? ['مرفوض', 'bad'] : r.status === 'cancelled' ? ['ملغى بطلبك', 'bad'] : ['مقبول / مرفوض', ''];
     const reviewed = r.status !== 'pending';
-    const items = [['أُرسل', 'done', U.date(r.createdAt)], ['قيد المراجعة', reviewed ? 'done' : 'cur', reviewed ? '' : 'بانتظار الإدارة'], [final[0], reviewed ? 'done ' + final[1] : '', reviewed ? U.date(r.reviewedAt) : '']];
+    const items = [['أُرسل', 'done', U.date(r.createdAt)], ['قيد المراجعة', reviewed ? 'done' : 'cur', reviewed ? '' : 'بانتظار الإدارة'], [final[0], reviewed ? 'done ' + final[1] : '', reviewed ? U.date(r.reviewedAt || r.cancelledAt) : '']];
     return `<ol class="stages" aria-label="مراحل الطلب">${items.map(([t, cls, sub]) => `<li class="${cls}"><i></i><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</li>`).join('')}</ol>`;
   }
   function points(d, c) {
@@ -213,7 +213,11 @@
       title = 'تفاصيل عملية الحماية';
       rows = [['نوع العملية', E(({ subscribe: 'اشتراك جديد', extend: 'تمديد', renew: 'تجديد' })[x.type] || x.type)], ['الرقم', `<span class="ltr">${E(numberFor(x.numberId)?.number || '—')}</span>`], ['باقة الحماية', E(x.packageSnapshot?.name || '—')], ['المدة', `${N(x.packageSnapshot?.days)} يوم`], ['التكلفة', `${N(x.pointsCost)} نقطة`], ['بداية الحماية', U.date(x.startsAt)], ['الانتهاء', U.date(x.endsAt)], ['التاريخ', U.date(x.createdAt)]];
     } else return null;
-    return { title, body: (kind === 'request' ? requestStages(d.purchaseRequests.find(v => v.id === id)) : '') + K.kv(rows) };
+    if (kind !== 'request') return { title, body: K.kv(rows) };
+    const r = d.purchaseRequests.find(v => v.id === id);
+    const reason = r.status === 'rejected' ? K.callout('info', 'سبب الرفض', `<p>${E(r.reviewNote || 'لم تذكر الإدارة سببًا.')}</p>`, false, 'id="rejectReason"') : '';
+    const foot = r.status === 'pending' ? K.btn('إلغاء الطلب', 'order-cancel', '', `data-id="${E(r.id)}"`) : r.status === 'rejected' ? K.btn('إعادة تقديم الطلب', 'order-resubmit', 'primary', `data-id="${E(r.id)}"`) : '';
+    return { title, body: requestStages(r) + reason + K.kv(rows), foot };
   }
 
   /* ===================== الإشعارات والحساب ===================== */

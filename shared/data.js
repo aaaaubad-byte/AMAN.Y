@@ -152,6 +152,15 @@
       return {entityType:'purchase_request',entityId:r.id,summary:`طلب باقة ${p.name}`};
     });
   }
+  // إلغاء العميل لطلبه المعلق فقط (بند 21): لا نقاط ولا قيد مالي؛ الحالة cancelled ويبقى الطلب في السجل
+  async function cancelPurchase(customerId, requestId) {
+    return transact(customerId,'purchase_cancelled',db=>{
+      const r=db.purchaseRequests.find(x=>x.id===requestId&&x.customerId===customerId);if(!r)throw new Error('الطلب غير موجود ضمن طلباتك.');
+      if(r.status!=='pending')throw new Error('لا يمكن إلغاء الطلب: لم يعد معلقًا.');
+      r.status='cancelled';r.cancelledAt=now();r.cancelledBy='customer';
+      return {entityType:'purchase_request',entityId:r.id,summary:`إلغاء العميل لطلب ${r.id}`};
+    });
+  }
   async function reviewPurchase(adminId, requestId, decision, note='') {
     if(!['approved','rejected'].includes(decision)) throw new Error('قرار الطلب غير صالح.');
     return transact(adminId,decision==='approved'?'purchase_approved':'purchase_rejected',db=>{
@@ -164,7 +173,7 @@
         if(!db.financeEntries.some(f=>f.sourceType==='purchase'&&f.sourceId===r.id))db.financeEntries.push({id:uid('fin'),kind:'revenue',amount:Number(r.packageSnapshot.price),currency:'YER',sourceType:'purchase',sourceId:r.id,customerId:c.id,description:`إيراد طلب نقاط ${r.id}`,createdAt:now()});
         c.isSubscriber=true;
       }
-      if(db.notificationSettings?.purchaseStatus)db.notifications.unshift({id:uid('notice'),customerId:c.id,title:decision==='approved'?'تم اعتماد طلب النقاط':'تم رفض طلب النقاط',body:`حالة الطلب ${r.id}: ${decision==='approved'?'معتمد':'مرفوض'}.${decision==='rejected'&&r.reviewNote?' السبب: '+r.reviewNote:''}`,status:'delivered-local',createdAt:now(),readAt:null});
+      if(db.notificationSettings?.purchaseStatus)db.notifications.unshift({id:uid('notice'),customerId:c.id,title:decision==='approved'?'تم اعتماد طلب النقاط':'تم رفض طلب النقاط',body:`حالة الطلب ${r.id}: ${decision==='approved'?'مقبول':'مرفوض'}.${decision==='rejected'&&r.reviewNote?' السبب: '+r.reviewNote:''}`,status:'delivered-local',createdAt:now(),readAt:null});
       return {entityType:'purchase_request',entityId:r.id,summary:`${decision==='approved'?'اعتماد':'رفض'} طلب ${r.id}`};
     });
   }
@@ -321,5 +330,5 @@
   }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,cancelPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });

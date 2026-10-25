@@ -125,6 +125,40 @@ test('U3: المفضلة تملأ الباقة والوسيلة فقط ولا ت
   if (req) { const det = S.operationDetail(d, 'request', req.id, c); assert.match(det.body, /class="stages"/); assert.match(det.body, /قيد المراجعة/); }
 });
 
+test('U4: العميل يلغي طلبه المعلق فقط وبلا أثر على النقاط أو المالية', async () => {
+  seed();
+  const before = D.read(), pend = before.purchaseRequests.find(r => r.status === 'pending'), other = before.customers.find(c => c.id !== pend.customerId);
+  const bal = D.balance(pend.customerId, before), fin = before.financeEntries.length, pts = before.pointTransactions.length;
+  await assert.rejects(() => D.cancelPurchase(other.id, pend.id), /غير موجود ضمن طلباتك/);
+  await D.cancelPurchase(pend.customerId, pend.id);
+  const after = D.read(), r = after.purchaseRequests.find(x => x.id === pend.id);
+  assert.equal(r.status, 'cancelled'); assert.equal(r.cancelledBy, 'customer');
+  assert.equal(D.balance(pend.customerId, after), bal); assert.equal(after.financeEntries.length, fin); assert.equal(after.pointTransactions.length, pts);
+  await assert.rejects(() => D.cancelPurchase(pend.customerId, pend.id), /لم يعد معلقًا/);
+  const appr = after.purchaseRequests.find(x => x.status === 'approved');
+  await assert.rejects(() => D.cancelPurchase(appr.customerId, appr.id), /لم يعد معلقًا/);
+});
+
+test('U4: تفاصيل الطلب: المعلق يُلغى، والمرفوض يعرض السبب ويُعاد تقديمه، والمقبول بلا إجراء', async () => {
+  seed();
+  const d0 = D.read(), rej = d0.purchaseRequests.find(r => r.status === 'rejected'), pend = d0.purchaseRequests.find(r => r.status === 'pending'), app = d0.purchaseRequests.find(r => r.status === 'approved');
+  const view = r => { const d = D.readForCustomer(r.customerId); return S.operationDetail(d, 'request', r.id, d.customers[0]); };
+  if (rej) { const v = view(rej); assert.match(v.body, /سبب الرفض/); assert.match(v.foot, /order-resubmit/); assert.doesNotMatch(v.foot, /order-cancel/); }
+  const vp = view(pend); assert.match(vp.foot, /order-cancel/); assert.doesNotMatch(vp.body, /سبب الرفض/);
+  assert.equal(view(app).foot, '');
+  await D.cancelPurchase(pend.customerId, pend.id);
+  const vc = view(pend); assert.equal(vc.foot, ''); assert.match(vc.body, /ملغى/);
+});
+
+test('U4: شارة الإشعارات تعرض عدد غير المقروء وتختفي عند الصفر', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0];
+  const n = d.notifications.filter(v => v.customerId === c.id && !v.readAt).length;
+  const h = S.build('home', d, c, x({ noticeDot: true })).html;
+  if (n) assert.match(h, new RegExp(`id="unreadDot" class="dot ">${n}<`)); else assert.match(h, /id="unreadDot" class="dot hidden"><\/i>/);
+  assert.match(S.build('home', d, c, x({ noticeDot: false })).html, /id="unreadDot" class="dot hidden"><\/i>/);
+});
+
 test('عزل العميل: لا يحمّل ملفات الإدارة ولا يعدّل الملفات المشتركة ولا يصل للمخزن مباشرة', () => {
   const html = read('customer.html');
   assert.doesNotMatch(html, /admin\.css|admin-kit|admin-screens|admin-model|admin\.js|reference\.css|customer-base\.css/);
