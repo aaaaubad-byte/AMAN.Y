@@ -65,8 +65,8 @@
   const callout = (icon, title, text, dark = false, attrs = '') => `<div class="callout ${dark ? 'dark' : ''}" ${attrs}>${tile(icon)}<div><b>${esc(title)}</b>${text}</div></div>`;
 
   /* ----- البحث والفلترة ----- */
-  const toolbar = (placeholder, q = '', options = null, value = '') =>
-    `<div class="toolbar ${options ? '' : 'single'}"><label class="search">${ico('search')}<input type="search" id="q" value="${esc(q)}" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}" autocomplete="off"></label>${options ? `<label class="select">${ico('caret')}<select id="flt" aria-label="تصفية حسب الشركة">${options.map(([k, l]) => `<option value="${esc(k)}" ${k === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}</div>`;
+  const toolbar = (placeholder, q = '', options = null, value = '', selLabel = 'تصفية حسب الشركة') =>
+    `<div class="toolbar ${options ? '' : 'single'}"><label class="search">${ico('search')}<input type="search" id="q" value="${esc(q)}" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}" autocomplete="off"></label>${options ? `<label class="select">${ico('caret')}<select id="flt" aria-label="${esc(selLabel)}">${options.map(([k, l]) => `<option value="${esc(k)}" ${k === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>` : ''}</div>`;
 
   /* ----- الأزرار والنماذج ----- */
   const btn = (label, act, cls = '', attrs = '', icon = '') => `<button type="button" class="btn ${cls}" data-act="${esc(act)}" ${attrs}>${icon ? ico(icon) : ''}${esc(label)}</button>`;

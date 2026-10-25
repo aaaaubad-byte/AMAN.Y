@@ -119,6 +119,17 @@
     const meta = live ? `${progress(st.sub)}<span class="subline">ينتهي ${U.date(st.sub.endsAt)}${st.own ? '' : ' · متابعة فقط'}</span>` : '<span class="subline">انتهى الاشتراك ويمكن تجديده</span>';
     return K.row({ icon: 'shield', tone: live ? st.tone : 'warn', title: n.number, ltr: true, sub: E(co?.name || 'شركة غير معروفة'), sub2: meta, pill, act: 'number-detail', attrs: `data-id="${E(n.id)}"` });
   }
+  // أرقام يملك العميل اشتراكها وهي منتهية أو قريبة الانتهاء: مرشحة للتجديد/التمديد من البطاقة (بنود 17 و86)
+  function renewable(d, c) {
+    return owned(d, c.id).map(n => ({ n, st: numberState(d, n, c.id) })).filter(({ st }) => st.key === 'expired' || (st.key === 'active' && st.own && st.near)).map(({ n, st }) => ({ n, op: st.key === 'expired' ? 'renew' : 'extend' }));
+  }
+  function renewFoot(d, n, id) {
+    const st = numberState(d, n, id), co = company(d, n);
+    if (!co || !(d.protectionPackages || []).some(p => p.companyId === co.id && p.active !== false)) return '';
+    if (st.key !== 'expired' && !(st.key === 'active' && st.own && st.near)) return '';
+    const op = st.key === 'expired' ? 'renew' : 'extend';
+    return `<div class="rowfoot">${K.btn(op === 'renew' ? 'تجديد الاشتراك' : 'تمديد الاشتراك', 'protection-path', 'small', `data-number="${E(n.number)}" data-company="${E(co.id)}" data-operation="${op}"`)}</div>`;
+  }
   function subscriptions(d, c, x) {
     const all = owned(d, c.id).filter(n => ['active', 'expired', 'protected'].includes(stateOf(d, c)(n).key))
       .sort((a, b) => { const A = numberState(d, a, c.id), B = numberState(d, b, c.id); return (A.key === 'active' ? 0 : 1) - (B.key === 'active' ? 0 : 1) || (A.left ?? 0) - (B.left ?? 0); });
@@ -126,10 +137,11 @@
       const rows = all.filter(n => matches(d, n, x));
       if (!all.length) return K.empty('الأرقام التي تفعّل لها الحماية، أو تتابع اشتراكها بعد إضافتها، تظهر هنا.', 'shield', 'لا توجد اشتراكات بعد', K.btn('عرض أرقامي', 'go', '', 'data-to="numbers"', 'numbers'));
       if (!rows.length) return K.empty('لا توجد اشتراكات تطابق البحث أو الشركة المحددة.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
-      return K.card(rows.map(n => subRow(d, n, c.id)));
+      return `<div class="list">${rows.map(n => `<div class="card">${subRow(d, n, c.id)}${renewFoot(d, n, c.id)}</div>`).join('')}</div>`;
     };
     const tool = all.length ? K.toolbar('بحث برقم الهاتف', x.q, [['', 'كل الشركات'], ...companyNames(d, all).map(n => [n, n])], x.co || '') : '';
-    return withBar('الاشتراكات', all.length ? `${N(all.length)} ${all.length === 1 ? 'اشتراك' : 'اشتراكات'}` : 'اشتراكاتك والأرقام التي تتابعها', `${tool}<div id="listbody" class="customer-number-list">${list()}</div>`, { tab: 'subscriptions', list });
+    const batch = renewable(d, c).length >= 2 ? `<div class="batch-entry">${K.btn('تجديد عدة أرقام', 'batch-open', '', '', 'repeat')}</div>` : '';
+    return withBar('الاشتراكات', all.length ? `${N(all.length)} ${all.length === 1 ? 'اشتراك' : 'اشتراكات'}` : 'اشتراكاتك والأرقام التي تتابعها', `${tool}${batch}<div id="listbody" class="customer-number-list">${list()}</div>`, { tab: 'subscriptions', list });
   }
   function numberDetail(d, n, id) {
     const co = company(d, n), st = numberState(d, n, id), s = st.sub || null, follower = st.key === 'active' && !st.own;
@@ -150,6 +162,18 @@
   }
 
   /* ===================== شراء النقاط والسجلات ===================== */
+  // ملخص الرصيد القابل للطي لأعلى الشاشات المالية (بند 42)
+  function balanceSummary(d, c) {
+    const tx = d.pointTransactions.filter(t => t.customerId === c.id), sum = ty => tx.filter(t => t.type === ty).reduce((a, t) => a + Number(t.points || 0), 0);
+    const last = [...tx].sort(byNew)[0];
+    return `<details class="bal"><summary><span>رصيد أمان</span><b>${N(D.balance(c.id, d))} نقطة</b>${K.ico('caret')}</summary>${K.kv([['إجمالي الإضافات', `+${N(sum('credit'))} نقطة`], ['إجمالي الخصومات', `−${N(sum('debit'))} نقطة`], ['آخر حركة', last ? U.date(last.createdAt) : '—']])}</details>`;
+  }
+  // كشف الحساب: الرصيد بعد كل حركة (بند 43) محسوبًا بالترتيب الزمني
+  function statement(d, c) {
+    const tx = d.pointTransactions.filter(t => t.customerId === c.id).map((t, i) => ({ t, i })).sort((a, b) => new Date(a.t.createdAt) - new Date(b.t.createdAt) || a.i - b.i);
+    let run = 0;
+    return tx.map(({ t }) => { run += (t.type === 'credit' ? 1 : -1) * Number(t.points || 0); return { ...t, after: run }; }).reverse();
+  }
   // «الأفضل» = أعلى نقاط مقابل كل ريال، ولا يظهر إلا لباقة واحدة متفردة بالمعيار (بند 44)
   function bestPack(packs) {
     const r = packs.map(p => ({ id: p.id, v: Number(p.points) / Number(p.price) })).filter(v => Number.isFinite(v.v) && v.v > 0);
@@ -170,7 +194,7 @@
     const pack = packs.find(v => v.id === packageId), method = methods.find(v => v.id === paymentId);
     const reference = String(st.reference || '');
     const step = Math.min(4, Math.max(1, Number(st.step) || 1));
-    const hero = `<div class="hero"><small>رصيد أمان الحالي</small><div class="big">${N(D.balance(c.id, d))}<em>نقطة</em></div></div>`;
+    const hero = balanceSummary(d, c);
     const choice = (name, v, checked, title, sub, end = '', first = false) => `<label class="choice"><input type="radio" ${first ? `id="${name}"` : ''} name="${name}" value="${E(v)}" ${checked ? 'checked' : ''}><span class="cmain"><b>${E(title)}</b>${sub ? `<small>${sub}</small>` : ''}</span>${end}</label>`;
     const favNote = fav.packageId || fav.paymentId ? `<div class="note fav-note">المفضلة محفوظة وتُملأ تلقائيًا، ويبقى عليك إدخال المرجع. ${K.btn('إزالة المفضلة', 'fav-clear', 'link')}</div>` : '';
     const p1 = `<div class="step" data-step="1" ${step === 1 ? '' : 'hidden'}>${K.section('اختر باقة النقاط')}${favNote}${packs.length ? `<div class="choices" role="radiogroup" aria-label="باقة النقاط">${packs.map((p, i) => choice('packageId', p.id, p.id === packageId, p.name, `${N(p.points)} نقطة · ${N(p.price)} ر.ي`, p.id === best ? K.pill('الأفضل قيمة', 'ok') : '', i === 0)).join('')}</div>${best ? K.note('«الأفضل قيمة» للباقة الأعلى نقاطًا مقابل كل ريال.') : ''}` : K.empty('لا توجد باقات متاحة حاليًا.', 'card')}<small class="ferr hidden" id="packageId-err" role="alert"></small></div>`;
@@ -195,15 +219,21 @@
     const items = [['أُرسل', 'done', U.date(r.createdAt)], ['قيد المراجعة', reviewed ? 'done' : 'cur', reviewed ? '' : 'بانتظار الإدارة'], [final[0], reviewed ? 'done ' + final[1] : '', reviewed ? U.date(r.reviewedAt || r.cancelledAt) : '']];
     return `<ol class="stages" aria-label="مراحل الطلب">${items.map(([t, cls, sub]) => `<li class="${cls}"><i></i><b>${t}</b>${sub ? `<small>${sub}</small>` : ''}</li>`).join('')}</ol>`;
   }
-  function points(d, c) {
-    const rows = d.pointTransactions.filter(t => t.customerId === c.id).sort(byNew);
-    const hero = `<div class="hero"><small>الرصيد الحالي</small><div class="big">${N(D.balance(c.id, d))}<em>نقطة</em></div></div>`;
-    const list = rows.length ? K.card(rows.map(x => K.row({ icon: x.type === 'credit' ? 'wallet' : 'repeat', tone: x.type === 'credit' ? 'ok' : '', title: `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة · ${x.type === 'credit' ? 'إضافة' : 'خصم'}`, sub: E(x.description || x.source), sub2: U.date(x.createdAt), act: 'operation-detail', attrs: `data-kind="points" data-id="${E(x.id)}"` }))) : K.empty('تظهر هنا إضافة النقاط بعد اعتماد طلب الشراء وخصمها عند عمليات الحماية.', 'wallet', 'لا توجد حركات نقاط بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'));
-    return withBar('رصيد النقاط وحركتها', '', hero + K.section('الحركات') + list, { tab: 'account' });
+  function points(d, c, x = {}) {
+    const all = statement(d, c);
+    const list = () => {
+      const q = String(x.q || '').trim().toLowerCase();
+      const rows = all.filter(t => (!x.co || t.type === x.co) && (!q || `${t.description || ''} ${t.source || ''} ${t.points} ${t.after}`.toLowerCase().includes(q)));
+      if (!all.length) return K.empty('تظهر هنا إضافة النقاط بعد اعتماد طلب الشراء وخصمها عند عمليات الحماية.', 'wallet', 'لا توجد حركات نقاط بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'));
+      if (!rows.length) return K.empty('لا توجد حركات تطابق البحث أو التصفية.', 'search', '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small'));
+      return K.card(rows.map(t => K.row({ icon: t.type === 'credit' ? 'wallet' : 'repeat', tone: t.type === 'credit' ? 'ok' : '', title: `${t.type === 'credit' ? '+' : '−'}${N(t.points)} نقطة · ${t.type === 'credit' ? 'إضافة' : 'خصم'}`, sub: E(t.description || t.source), sub2: `${U.date(t.createdAt)} · الرصيد بعدها ${N(t.after)} نقطة`, act: 'operation-detail', attrs: `data-kind="points" data-id="${E(t.id)}"` })));
+    };
+    const tool = all.length ? K.toolbar('بحث في الحركات', x.q, [['', 'كل الحركات'], ['credit', 'الإضافات'], ['debit', 'الخصومات']], x.co || '', 'تصفية حسب نوع الحركة') : '';
+    return withBar('رصيد النقاط وحركتها', '', balanceSummary(d, c) + tool + K.section('كشف الحساب') + `<div id="listbody">${list()}</div>`, { tab: 'account', list });
   }
   function orders(d, c) {
     const rows = d.purchaseRequests.filter(x => x.customerId === c.id).sort(byNew);
-    return withBar('طلبات شراء النقاط', '', rows.length ? K.card(rows.map(r => K.row({ icon: 'receipt', title: r.packageSnapshot.name, sub: `${N(r.packageSnapshot.points)} نقطة · ${N(r.packageSnapshot.price)} ر.ي`, sub2: `${E(r.paymentReference)} · ${U.date(r.createdAt)}`, pill: K.pill(label(r.status), TONE[r.status] || ''), act: 'operation-detail', attrs: `data-kind="request" data-id="${E(r.id)}"` }))) : K.empty('أرسل طلب شراء نقاط وستتابع حالته هنا.', 'receipt', 'لا توجد طلبات بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card')), { tab: 'buy' });
+    return withBar('طلبات شراء النقاط', '', balanceSummary(d, c) + (rows.length ? K.card(rows.map(r => K.row({ icon: 'receipt', title: r.packageSnapshot.name, sub: `${N(r.packageSnapshot.points)} نقطة · ${N(r.packageSnapshot.price)} ر.ي`, sub2: `${E(r.paymentReference)} · ${U.date(r.createdAt)}`, pill: K.pill(label(r.status), TONE[r.status] || ''), act: 'operation-detail', attrs: `data-kind="request" data-id="${E(r.id)}"` }))) : K.empty('أرسل طلب شراء نقاط وستتابع حالته هنا.', 'receipt', 'لا توجد طلبات بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'))), { tab: 'buy' });
   }
   function operations(d, c) {
     const rows = [
@@ -215,7 +245,7 @@
     const title = x => x.kind === 'protection' ? `${OP_LABEL[x.type] || 'عملية حماية'}${x.packageSnapshot?.name ? ' — ' + x.packageSnapshot.name : ''}` : (x.description || x.packageSnapshot?.name || (x.kind === 'subscription' ? 'اشتراك حماية' : 'طلب نقاط'));
     const icon = { points: 'wallet', request: 'receipt', subscription: 'shield', protection: 'shield' };
     const list = rows.length ? K.card(rows.map(x => K.row({ icon: icon[x.kind], title: title(x), sub: U.date(x.createdAt), val: x.kind === 'points' ? `${x.type === 'credit' ? '+' : '−'}${N(x.points)} نقطة` : x.kind === 'request' ? '' : `${N(x.pointsCost)} نقطة`, pill: x.kind === 'request' ? K.pill(label(x.status), TONE[x.status] || '') : '', act: 'operation-detail', attrs: `data-kind="${x.kind}" data-id="${E(x.id)}"` }))) : K.empty('يظهر هنا سجل نقاطك وطلباتك وعمليات الحماية.', 'repeat', 'لا توجد عمليات بعد', K.btn('شراء نقاط', 'go', 'primary', 'data-to="buy"', 'card'));
-    return withBar('العمليات', 'سجل نقاطك وطلباتك واشتراكاتك', list, { tab: 'operations' });
+    return withBar('العمليات', 'سجل نقاطك وطلباتك واشتراكاتك', balanceSummary(d, c) + list, { tab: 'operations' });
   }
   function operationDetail(d, kind, id, c) {
     const numberFor = nid => d.numbers.find(n => n.id === nid), companyOf = n => n && company(d, n);
