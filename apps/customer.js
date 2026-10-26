@@ -262,6 +262,41 @@
   function addNumberSheet() {
     openSheet('إضافة رقم إلى أرقامي', `<form id="add-number-form" data-form="add-number" novalidate>${K.fields(K.field({ id: 'newNumber', name: 'number', label: 'رقم الهاتف', type: 'tel', required: true, inputmode: 'numeric', dir: 'ltr', autocomplete: 'tel-national' }))}<p id="modal-company" class="note">أدخل الرقم لتحديد شركة الاتصالات</p>${errBox}</form><p class="note">إضافة الرقم لا تخصم نقاطًا ولا تفعّل الحماية.</p>`, K.submitBtn('إضافة الرقم', 'add-number-form') + K.btn('إلغاء', 'sheet-close'));
   }
+  /* ----- تجديد عدة أرقام دفعة واحدة (بند 86): اختيار الأرقام والباقات، إجمالي التكلفة، ثم تأكيد واحد ----- */
+  function batchCandidates() {
+    const d = data();
+    return D.customerNumbers(ui.id, d).map(n => ({ n, st: S.numberState(d, n, ui.id) }))
+      .filter(({ st }) => st.key === 'expired' || (st.key === 'active' && st.own && st.near))
+      .map(({ n, st }) => ({ n, op: st.key === 'expired' ? 'renew' : 'extend', co: d.companies.find(c => c.id === n.companyId), packs: (d.protectionPackages || []).filter(p => p.companyId === n.companyId && p.active !== false) }))
+      .filter(x => x.co && x.packs.length);
+  }
+  function batchSheet() {
+    const items = batchCandidates();
+    if (items.length < 1) { toast('لا توجد أرقام قابلة للتجديد الآن.', true); return; }
+    const rows = items.map(({ n, op, packs }) => `<div class="batch-row" data-number="${E(n.number)}" data-op="${op}"><label class="choice"><input type="checkbox" class="bt-chk" value="${E(n.id)}"><span class="cmain"><b class="ltr">${E(n.number)}</b><small>${op === 'renew' ? 'منتهٍ — تجديد' : 'قريب الانتهاء — تمديد'}</small></span></label><label class="select block"><select class="bt-pkg" aria-label="باقة الرقم ${E(n.number)}"><option value="">اختر الباقة</option>${packs.map(p => `<option value="${E(p.id)}" data-cost="${Number(p.pointsCost)}">${E(p.name)} · ${N(p.days)} يوم · ${N(p.pointsCost)} نقطة</option>`).join('')}</select></label></div>`).join('');
+    openSheet('تجديد عدة أرقام', `<div id="batch-form">${rows}<div id="batch-total" class="note" aria-live="polite"></div>${errBox}</div>`, K.btn('تأكيد وخصم النقاط', 'batch-confirm', 'primary', 'id="batch-go" disabled') + K.btn('إلغاء', 'sheet-close'));
+    batchRefresh();
+  }
+  // يقرأ اختيارات النافذة ويتحقق منها؛ يعيد الخطة أو سبب عدم الاكتمال
+  function batchPlan() {
+    const cands = batchCandidates(), items = []; let total = 0;
+    for (const row of document.querySelectorAll('.batch-row')) {
+      if (!row.querySelector('.bt-chk')?.checked) continue;
+      const pk = row.querySelector('.bt-pkg')?.value, c = cands.find(x => x.n.number === row.dataset.number);
+      if (!c) return { ok: false, error: 'تغيّرت حالة أحد الأرقام؛ أعد فتح النافذة.' };
+      const p = c.packs.find(v => v.id === pk); if (!p) return { ok: false, error: `اختر باقة للرقم ${c.n.number}.`, missing: true };
+      total += Number(p.pointsCost); items.push({ number: c.n.number, packageId: p.id, operation: c.op });
+    }
+    const balance = D.balance(ui.id, data());
+    if (!items.length) return { ok: false, error: 'اختر رقمًا واحدًا على الأقل.', total, balance, items };
+    if (total > balance) return { ok: false, error: `رصيدك غير كافٍ؛ ينقصك ${N(total - balance)} نقطة.`, total, balance, items, short: total - balance };
+    return { ok: true, items, total, balance };
+  }
+  function batchRefresh() {
+    const plan = batchPlan(), box = $('#batch-total'), go2 = $('#batch-go');
+    if (box) box.innerHTML = plan.items?.length ? `الإجمالي: <b>${N(plan.total)} نقطة</b> · رصيدك ${N(plan.balance)} نقطة${plan.short ? ` · <b>ينقصك ${N(plan.short)} نقطة</b>` : ` · الرصيد بعد الخصم ${N(plan.balance - plan.total)}`}` : 'اختر الأرقام والباقات لعرض إجمالي التكلفة.';
+    if (go2) go2.disabled = !plan.ok;
+  }
   function protectionPathSheet(number, companyId, operation) {
     const d = data(), packs = (d.protectionPackages || []).filter(p => p.companyId === companyId && p.active !== false);
     if (!packs.length) throw new Error('لا توجد باقات حماية متاحة لهذه الشركة.');
@@ -293,8 +328,9 @@
     const labels = { subscribe: 'الاشتراك في الحماية', extend: 'تمديد الحماية', renew: 'تجديد الحماية' };
     const rows = [['العملية', labels[operation] || 'عملية الحماية'], ['رقم الهاتف', `<span class="ltr">${E(number)}</span>`], ['الباقة', E(p.name)], ['المدة الصافية', `${N(netDays)} يوم`], ['التكلفة', `${N(p.pointsCost)} نقطة`], ['الرصيد الحالي', `${N(balance)} نقطة`], ['الرصيد بعد الخصم', `${N(balance - Number(p.pointsCost))} نقطة`], ['بداية العملية', starts]];
     if (ends) rows.push(['الانتهاء المتوقع', ends]);
-    openSheet('مراجعة عملية الحماية', `${K.kv(rows)}<p class="sheet-text">لن يُخصم الرصيد إلا بعد التأكيد النهائي.</p>${errBox}`,
-      K.btn('تأكيد وخصم النقاط', 'protection-confirm', 'primary', 'data-confirm') + K.btn('رجوع', 'protection-path', '', `data-number="${E(number)}" data-company="${E(companyId)}" data-operation="${operation}"`));
+    const short = Number(p.pointsCost) - balance, back = K.btn('رجوع', 'protection-path', '', `data-number="${E(number)}" data-company="${E(companyId)}" data-operation="${operation}"`);
+    openSheet('مراجعة عملية الحماية', `${K.kv(rows)}${short > 0 ? K.callout('wallet', 'رصيدك غير كافٍ', `<p>ينقصك ${N(short)} نقطة لإتمام هذه العملية. لم يُخصم شيء.</p>`, false, 'id="shortfall"') : '<p class="sheet-text">لن يُخصم الرصيد إلا بعد التأكيد النهائي.</p>'}${errBox}`,
+      (short > 0 ? K.btn('اشحن الآن', 'topup', 'primary', `data-short="${short}"`) : K.btn('تأكيد وخصم النقاط', 'protection-confirm', 'primary', 'data-confirm')) + back);
   }
   function numberNotificationsSheet(id) {
     const d = data(), n = ownedNumber(d, id); if (!n) return;
@@ -345,6 +381,23 @@
         case 'number-detail': openNumberDetail(id); return;
         case 'add-number-open': addNumberSheet(); return;
         case 'add-search-number': await run(async () => { await D.addNumber(ui.id, b.dataset.number); ui.lookup = D.searchNumberStatus(ui.id, b.dataset.number); render(); toast('أُضيف الرقم إلى أرقامك.'); }); return;
+        case 'topup': { // يفتح الشراء بأصغر باقة تغطي النقص إن وُجدت (بند 18)
+          const need = Number(b.dataset.short) || 0, packs = data().packages.filter(v => v.active !== false && Number(v.points) >= need).sort((a, c2) => Number(a.points) - Number(c2.points));
+          ui.buy = packs[0] ? { step: 2, packageId: packs[0].id, touched: true } : { step: 1, touched: true };
+          closeSheet(); go('buy'); toast(packs[0] ? `ينقصك ${N(need)} نقطة؛ اخترنا أصغر باقة تغطيها.` : `ينقصك ${N(need)} نقطة؛ اختر باقة وكرّر الشراء عند الحاجة.`); return;
+        }
+        case 'batch-open': batchSheet(); return;
+        case 'batch-confirm': await run(async () => {
+          const plan = batchPlan(); if (!plan.ok) throw new Error(plan.error);
+          const done = [], failed = [];
+          for (const it of plan.items) {
+            try { await D.performProtectionOperation(ui.id, it.number, it.packageId, it.operation, D.uid('idem')); done.push(it.number); }
+            catch (err) { failed.push(`${it.number}: ${err?.message || 'تعذرت العملية'}`); }
+          }
+          closeSheet(); render();
+          if (failed.length) openSheet('نتيجة التجديد', `<p class="sheet-text">تم ${N(done.length)} من ${N(plan.items.length)}. العمليات التي لم تتم لم تُخصم نقاطها.</p>${K.card(failed.map(t => K.row({ icon: 'info', title: t, plain: true })))}`, K.btn('إغلاق', 'sheet-close', 'primary'));
+          else toast(`جُدّد ${N(done.length)} ${done.length === 1 ? 'رقم' : 'أرقام'} وخُصمت ${N(plan.total)} نقطة.`);
+        }); return;
         case 'protection-path': protectionPathSheet(b.dataset.number, b.dataset.company, b.dataset.operation); return;
         case 'protection-review': protectionReviewSheet(b.dataset.number, b.dataset.company, b.dataset.operation); return;
         case 'protection-confirm': await run(async () => {
@@ -498,6 +551,7 @@
     if (t.id === 'quickNumber') { const input = $('#search-number-input'); if (input) { input.value = t.value; input.dispatchEvent(new Event('input', { bubbles: true })); } return; }
     if (t.name === 'packageId' || t.name === 'paymentId') { clearFieldError(t.name); syncBuy(); return; }
     if (t.id === 'saveFav') { syncBuy(); return; }
+    if (t.classList?.contains('bt-chk') || t.classList?.contains('bt-pkg')) { batchRefresh(); return; }
     if (t.id === 'theme') { localStorage.setItem('aman.customer.theme', t.value); localStorage.setItem('aman.customer.dark', t.value === 'dark' ? '1' : '0'); applyTheme(); return; }
     if (t.id === 'notifications-enabled') {
       const key = `aman.customer.notifications.${ui.id}`, on = t.checked;

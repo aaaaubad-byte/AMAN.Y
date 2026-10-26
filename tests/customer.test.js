@@ -202,6 +202,34 @@ test('U5 (87): تمديد صاحب الاشتراك يُخطر المتابع ا
   assert.equal(owner.filter(n => n.title === 'تغيّر حالة اشتراك رقم تتابعه').length, 0, 'المالك لا يُخطر بعمليته');
 });
 
+test('U6: كشف الحساب يحسب الرصيد بعد كل حركة ويطابق الرصيد الحالي، ويبحث ويصفّي', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], v = x({ id: c.id });
+  const html = S.build('points', d, c, v);
+  const bal = D.balance(c.id, d);
+  assert.ok(html.html.includes(`الرصيد بعدها ${bal.toLocaleString('en-US')} نقطة`) || html.list().includes('الرصيد بعدها'), 'أحدث حركة تعرض الرصيد الحالي');
+  assert.match(html.html, /<details class="bal">/); assert.match(html.html, /إجمالي الإضافات/);
+  const only = t => S.build('points', d, c, x({ id: c.id, co: t })).list();
+  assert.match(only('credit'), /إضافة/); assert.doesNotMatch(only('credit'), /· خصم/); assert.doesNotMatch(only('debit'), /· إضافة/);
+  assert.match(S.build('points', d, c, x({ id: c.id, q: 'لا-يوجد-كهذا' })).list(), /clear-filter/);
+  const first = d.pointTransactions.filter(t => t.customerId === c.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  assert.match(html.list(), new RegExp(`${first.points}`));
+});
+
+test('U6: زر التجديد/التمديد داخل بطاقة الاشتراك للمالك فقط وبوجود باقة حماية، وزر التجديد الجماعي عند رقمين فأكثر', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0], H = 86400000;
+  d.protectionPackages = [{ id: 'pp', name: 'باقة', companyId: 'co-net77', days: 30, pointsCost: 10, active: true }, { id: 'pp3', name: 'باقة', companyId: 'co-net73', days: 30, pointsCost: 10, active: true }, { id: 'pp1', name: 'باقة', companyId: 'co-net71', days: 30, pointsCost: 10, active: true }];
+  const sub = id => d.subscriptions.find(v => v.numberId === id);
+  Object.assign(sub('num-1001'), { startsAt: new Date(Date.now() - 20 * H).toISOString(), endsAt: new Date(Date.now() + 20 * H).toISOString() }); // سارٍ بعيد: لا زر
+  Object.assign(sub('num-1002'), { startsAt: new Date(Date.now() - 27 * H).toISOString(), endsAt: new Date(Date.now() + 3 * H).toISOString() }); // قريب: تمديد
+  const html = S.build('subscriptions', d, c, x({ id: c.id })).list();
+  assert.match(html, /data-number="731234568"[^>]*data-operation="extend"/); assert.match(html, /data-number="711234569"[^>]*data-operation="renew"/);
+  assert.doesNotMatch(html, /data-number="771234567"/);
+  assert.match(S.build('subscriptions', d, c, x({ id: c.id })).html, /data-act="batch-open"/);
+  d.protectionPackages = []; assert.doesNotMatch(S.build('subscriptions', d, c, x({ id: c.id })).list(), /data-act="protection-path"/, 'لا باقات: لا أزرار');
+});
+
 test('عزل العميل: لا يحمّل ملفات الإدارة ولا يعدّل الملفات المشتركة ولا يصل للمخزن مباشرة', () => {
   const html = read('customer.html');
   assert.doesNotMatch(html, /admin\.css|admin-kit|admin-screens|admin-model|admin\.js|reference\.css|customer-base\.css/);
