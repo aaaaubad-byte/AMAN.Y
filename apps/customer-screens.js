@@ -288,15 +288,29 @@
       K.row({ icon: 'wallet', title: 'رصيد النقاط وحركتها', to: 'points' }),
       K.row({ icon: 'sliders', title: 'الإعدادات', to: 'settings' }),
       K.row({ icon: 'lock', title: 'تأمين التطبيق', to: 'security' }),
-      K.row({ icon: 'help', title: 'المساعدة', act: 'account-help' }),
+      K.row({ icon: 'lock', title: 'تغيير كلمة المرور', act: 'password-open' }),
+      K.row({ icon: 'help', title: 'المساعدة والتواصل', to: 'help' }),
       K.row({ icon: 'doc', title: 'الشروط والأحكام', act: 'terms' }),
       K.row({ icon: 'shield', title: 'سياسة الخصوصية', act: 'privacy' })
     ]);
-    return withBar('الحساب', '', `${profile}${K.section('الحساب والإعدادات')}${links}<div style="margin-top:16px">${K.btn('تسجيل الخروج', 'logout-open', '', '', 'logout')}</div>`, { tab: 'home' });
+    return withBar('الحساب', '', `${profile}${K.section('الحساب والإعدادات')}${links}<div style="margin-top:16px">${K.btn('تسجيل الخروج', 'logout-open', '', '', 'logout')}${K.btn('حذف الحساب', 'delete-open', 'danger', '', 'close')}</div>`, { tab: 'home' });
   }
   function settings(d, c, x) {
     const theme = x.theme;
     return withBar('الإعدادات', 'المظهر والإشعارات', `${K.fields(K.field({ id: 'theme', name: 'theme', label: 'نمط العرض', type: 'select', value: theme, options: [['light', 'فاتح'], ['dark', 'داكن'], ['device', 'حسب إعداد الجهاز']] }) + K.toggle('notifications-enabled', 'إظهار تنبيه الإشعارات داخل التطبيق', x.noticeDot, 'نقطة التنبيه فوق أيقونة الإشعارات في الرئيسية'))}`, { tab: 'home' });
+  }
+  // خطوات الخدمة الثلاث: تُستعمل في الترحيب وفي المساعدة (بند 69)
+  const WELCOME = [['card', 'اشحن رصيد أمان', 'اشترِ باقة نقاط وأرسل مرجع التحويل، وتُضاف النقاط بعد اعتماد الإدارة.'], ['numbers', 'أضف رقمك', 'أضف رقم هاتفك ليظهر في حسابك دون أي خصم.'], ['shield', 'فعّل الحماية وتابع اشتراكك', 'اختر باقة حماية للرقم وتابع المدة المتبقية وجدّد قبل الانتهاء.']];
+  const welcomeSteps = () => `<ol class="welcome">${WELCOME.map(([ic, t, b], i) => `<li>${K.tile(ic)}<div><b>${N(i + 1)}. ${E(t)}</b><p>${E(b)}</p></div></li>`).join('')}</ol>`;
+  // الأسئلة الشائعة من محتوى الإدارة: كتل مفصولة بسطر فارغ، أول سطر في الكتلة هو السؤال والباقي جوابه
+  function parseFaq(text) {
+    return String(text || '').split(/\n\s*\n/).map(b => b.trim()).filter(Boolean).map(b => { const [q, ...a] = b.split('\n'); return { q: q.trim(), a: a.join('\n').trim() }; });
+  }
+  function help(d, c) {
+    const faq = parseFaq(d.content?.faq), contact = String(d.content?.contact || '').trim();
+    const faqHtml = faq.length ? `<div class="faq">${faq.map(f => `<details><summary>${E(f.q)}</summary>${f.a ? `<p>${E(f.a).replace(/\n/g, '<br>')}</p>` : ''}</details>`).join('')}</div>` : K.empty('لم تضف الإدارة أسئلة شائعة بعد.', 'help');
+    const contactHtml = contact ? `<div class="card pad contact"><p>${E(contact).replace(/\n/g, '<br>')}</p></div>` : K.empty('لم تضف الإدارة بيانات تواصل بعد.', 'inbox');
+    return withBar('المساعدة والتواصل', '', `${K.section('كيف تعمل الخدمة؟')}${welcomeSteps()}${K.section('الأسئلة الشائعة')}${faqHtml}${K.section('التواصل')}${contactHtml}`, { tab: 'home' });
   }
   function security(d, c) {
     return withBar('تأمين التطبيق', E(c.name), `${K.callout('lock', 'الجلسة الحالية', '<p class="sheet-text">يمكنك إنهاء الجلسة الحالية من هنا. لا تُحذف أي بيانات محفوظة.</p>')}<div style="margin-top:14px">${K.btn('إنهاء الجلسة', 'logout-open', 'primary')}</div>`, { tab: 'home' });
@@ -314,9 +328,10 @@
       case 'account': return account(d, c, x);
       case 'settings': return settings(d, c, x);
       case 'security': return security(d, c, x);
+      case 'help': return help(d, c, x);
       default: return { ...home(d, c, x), tab: 'home' };
     }
   }
 
-  root.AmanCustomerScreens = { build, login, signup, numberDetail, operationDetail, resultView, numberState, notices, OP_LABEL };
+  root.AmanCustomerScreens = { build, login, signup, numberDetail, operationDetail, resultView, numberState, notices, OP_LABEL, welcomeSteps, parseFaq };
 })(window);

@@ -348,7 +348,7 @@ ${K.section('أنواع إشعارات النظام')}${K.fields(
 ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(log.slice(0, 100).map(n => K.row({ icon: 'bell', tone: n.readAt ? '' : 'dark', title: n.title, sub: E(n.body), sub2: `إلى ${E(M.customer(d, n.customerId)?.name || '—')} · ${n.readAt ? 'مقروء' : 'غير مقروء'}` }))) : K.empty('لا توجد إشعارات محلية بعد.', 'bell')}${log.length > 100 ? K.note('يعرض أحدث 100 إشعار.') : ''}` };
   }
 
-  const CONTENT = [['terms', 'الشروط والأحكام'], ['privacy', 'سياسة الخصوصية'], ['contact', 'بيانات التواصل']];
+  const CONTENT = [['terms', 'الشروط والأحكام'], ['privacy', 'سياسة الخصوصية'], ['contact', 'بيانات التواصل'], ['faq', 'الأسئلة الشائعة']];
   function content(d) {
     return { chrome: 'tabs', tab: 'more', html: `${K.bar('المحتوى', 'نصوص تظهر في تطبيق العميل')}${K.card(CONTENT.map(([k, l]) => K.row({ icon: 'text', title: l, sub: E((d.content?.[k] || '').trim().slice(0, 70) || 'لم يُضف نص بعد'), to: 'content/' + k })))}` };
   }

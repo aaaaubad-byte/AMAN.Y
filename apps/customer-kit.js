@@ -113,7 +113,12 @@
       need('agree', v.agree === true, 'وافق على الشروط والأحكام للمتابعة.');
     } else if (kind === 'purchase') {
       need('packageId', t(v.packageId), 'اختر باقة النقاط.'); need('paymentId', t(v.paymentId), 'اختر وسيلة الدفع.'); need('reference', t(v.reference), 'أدخل مرجع التحويل.');
-    } else if (kind === 'add-number') need('newNumber', t(v.number), 'أدخل رقم الهاتف.');
+    } else if (kind === 'change-password') {
+      need('cp_old', String(v.old || '').length > 0, 'أدخل كلمة المرور الحالية.');
+      need('cp_new', String(v.new1 || '').length > 0, 'أدخل كلمة المرور الجديدة.'); need('cp_new', !v.new1 || String(v.new1).length >= 4, 'كلمة المرور يجب ألا تقل عن 4 خانات.');
+      need('cp_new2', String(v.new2 || '').length > 0, 'أعد إدخال كلمة المرور الجديدة.'); need('cp_new2', !v.new2 || v.new1 === v.new2, 'كلمتا المرور غير متطابقتين.');
+    } else if (kind === 'delete-account') need('del_pass', String(v.password || '').length > 0, 'أدخل كلمة المرور لتأكيد الحذف.');
+    else if (kind === 'add-number') need('newNumber', t(v.number), 'أدخل رقم الهاتف.');
     else if (kind === 'number-search') need('search-number-input', t(v.number), 'أدخل رقم الهاتف.');
     return out;
   }
@@ -122,6 +127,8 @@
     login: [[/البريد/, 'l_email'], [/بيانات الدخول|كلمة المرور/, 'l_pass']],
     signup: [[/البريد/, 's_email'], [/كلمة المرور/, 's_pass'], [/الشروط/, 'agree']],
     purchase: [[/مرجع/, 'reference'], [/الباقة|وسيلة الدفع/, 'packageId']],
+    'change-password': [[/الحالية/, 'cp_old'], [/الجديدة|تختلف/, 'cp_new']],
+    'delete-account': [[/./, 'del_pass']],
     'add-number': [[/./, 'newNumber']],
     'number-search': [[/./, 'search-number-input']]
   };

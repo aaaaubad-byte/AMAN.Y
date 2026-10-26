@@ -5,7 +5,7 @@
   const D = AmanData, U = AmanUI, K = AmanCustomerKit, S = AmanCustomerScreens;
   const E = K.esc, N = U.fmt, $ = s => document.querySelector(s);
   const TABS = [['subscriptions', 'الاشتراكات', 'shield'], ['numbers', 'الأرقام', 'numbers'], ['home', 'الرئيسية', 'home'], ['buy', 'شراء نقاط', 'card'], ['operations', 'العمليات', 'repeat']];
-  const ROUTES = ['home', 'subscriptions', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security'];
+  const ROUTES = ['home', 'subscriptions', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security', 'help'];
   const PARENT = { orders: 'buy', settings: 'account', security: 'account' };
 
   const DEMO = new URLSearchParams(location.search).get('demo') === '1'; // وضع المعاينة فقط: تعبئة بيانات الدخول وحساب العميل التجريبي
@@ -132,6 +132,7 @@
     tabbar.innerHTML = TABS.map(([k, label, icon]) => `<button type="button" class="tab" data-act="go" data-to="${k}" ${k === (v.tab || 'home') ? 'aria-current="page"' : ''}>${K.ico(icon)}<span>${label}</span></button>`).join('');
     document.title = 'أمان | العميل';
     applyPaging();
+    maybeWelcome(snap);
     if (opt.top) screen.scrollTop = 0; else if (opt.restore) screen.scrollTop = ui.scroll[ui.route] || 0; else screen.scrollTop = keepTop;
   }
   // تحديث القائمة وحدها أثناء الكتابة في البحث/الفلتر (تُبنى من جديد ببيانات وقيم البحث الحالية)
@@ -337,6 +338,17 @@
     const list = S.notices(d, ui.id).filter(x => x.numberId === n.id || String(x.body || '').includes(n.number));
     openSheet('إشعارات الرقم', `<p class="sheet-text ltr">${E(n.number)}</p>${list.length ? K.card(list.map(x => K.row({ icon: 'bell', title: x.title, sub: E(x.body), sub2: `${U.date(x.createdAt)} · ${x.readAt ? 'مقروء' : 'جديد'}`, act: 'notice-open', attrs: `data-id="${E(x.id)}"` }))) : K.empty('لا توجد إشعارات مرتبطة بهذا الرقم.', 'bell')}`, K.btn('إغلاق', 'sheet-close', 'primary'));
   }
+  /* ----- الترحيب بثلاث خطوات (بند 69): مرة واحدة لكل حساب جديد، ويُعاد عرضه من المساعدة ----- */
+  const welcomeKey = () => 'aman.customer.welcome.' + ui.id;
+  const markWelcome = () => { try { localStorage.setItem(welcomeKey(), '1'); } catch { /* يُعرض في الجلسة فقط */ } };
+  function welcomeSheet() { openSheet('مرحبًا بك في أمان', `${S.welcomeSteps()}`, K.btn('ابدأ بشراء النقاط', 'welcome-go', 'primary') + K.btn('لاحقًا', 'welcome-done')); }
+  function maybeWelcome(snap) {
+    if (ui.welcomeShown || ui.sheet || ui.route !== 'home') return;
+    let seen = false; try { seen = localStorage.getItem(welcomeKey()) === '1'; } catch { /* */ }
+    const d = snap.d, fresh = !d.purchaseRequests.some(r => r.customerId === ui.id) && !D.customerNumbers(ui.id, d).length;
+    if (seen || !fresh) return;
+    ui.welcomeShown = true; welcomeSheet();
+  }
   const logoutSheet = () => openSheet('تسجيل الخروج', '<p class="sheet-text">هل تريد إنهاء الجلسة الحالية؟ لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary') + K.btn('إلغاء', 'sheet-close'));
 
   /* ===================== معالجة النقر ===================== */
@@ -440,10 +452,6 @@
           const content = data().content?.[a] || 'لم يضف المسؤول نصًا بعد.';
           textSheet(a === 'terms' ? 'الشروط والأحكام' : 'سياسة الخصوصية', content); return;
         }
-        case 'account-help': {
-          const c = data().customers?.[0];
-          textSheet('المساعدة', `معرّف الحساب ${c?.accountId || c?.id || ''} هو الرمز المستخدم للتعريف بحسابك في هذا النموذج المحلي.`); return;
-        }
         case 'copy-account-id': { const c = data().customers[0]; await copyText(c?.accountId || c?.id || '', 'معرّف الحساب'); return; }
         case 'copy': await copyText(b.dataset.copy, b.dataset.label || 'القيمة'); return;
         case 'toggle-pass': {
@@ -453,6 +461,15 @@
           b.setAttribute('aria-pressed', String(show)); b.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
           b.innerHTML = K.ico(show ? 'eyeoff' : 'eye'); input.focus(); return;
         }
+        case 'password-open':
+          openSheet('تغيير كلمة المرور', `<form id="cp-form" data-form="change-password" novalidate>${K.fields(K.field({ id: 'cp_old', name: 'old', label: 'كلمة المرور الحالية', type: 'password', autocomplete: 'current-password' }) + K.field({ id: 'cp_new', name: 'new1', label: 'كلمة المرور الجديدة (4 خانات فأكثر)', type: 'password', autocomplete: 'new-password' }) + K.field({ id: 'cp_new2', name: 'new2', label: 'إعادة كلمة المرور الجديدة', type: 'password', autocomplete: 'new-password' }))}${errBox}</form>`, K.submitBtn('حفظ كلمة المرور', 'cp-form') + K.btn('إلغاء', 'sheet-close')); return;
+        case 'delete-open': {
+          const d = data(), c = d.customers[0], bal = D.balance(ui.id, d), pend = d.purchaseRequests.filter(r => r.customerId === ui.id && r.status === 'pending').length, live = D.customerNumbers(ui.id, d).filter(n => S.numberState(d, n, ui.id).own === true).length;
+          openSheet('حذف الحساب', `<p class="sheet-text">سيُخفى اسمك وبريدك ويُغلق الدخول إلى الحساب نهائيًا.</p>${K.kv([['رصيدك الحالي', `${N(bal)} نقطة — يُفقد ولا يُسترد`], ['اشتراكات سارية باسمك', `${N(live)} — تبقى حتى انتهائها دون وصول إليها`], ['طلبات معلقة', `${N(pend)} — تُلغى تلقائيًا`]])}${K.note('تبقى السجلات المالية وسجلات النقاط والطلبات والتدقيق دون هويتك، لأن الاحتفاظ بها مطلوب.')}<form id="del-form" data-form="delete-account" novalidate>${K.fields(K.field({ id: 'del_pass', name: 'password', label: 'كلمة المرور لتأكيد الحذف', type: 'password', autocomplete: 'current-password' }))}${errBox}</form>`, K.submitBtn('حذف الحساب نهائيًا', 'del-form', 'danger') + K.btn('إلغاء', 'sheet-close', 'primary')); return;
+        }
+        case 'welcome-open': welcomeSheet(); return;
+        case 'welcome-done': markWelcome(); closeSheet(); return;
+        case 'welcome-go': markWelcome(); closeSheet(); go('buy'); return;
         case 'logout-open': logoutSheet(); return;
         case 'logout-confirm':
           sessionStorage.removeItem('aman.customer'); ui.id = ''; ui.auth = 'login'; ui.lookup = null; closeSheet();
@@ -513,6 +530,20 @@
           ui.id = result.entityId; sessionStorage.setItem('aman.customer', ui.id);
           history.replaceState({ amanCustomer: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true });
           toast('أُنشئ حسابك. تصبح مشتركًا بعد اعتماد أول طلب نقاط.'); return;
+        }
+        case 'change-password': {
+          const c = D.read().customers.find(x => x.id === ui.id), oldPw = String(fd.get('old')), neu = String(fd.get('new1'));
+          if (!c || !(await verifyPassword(oldPw, c.authHash))) throw new Error('كلمة المرور الحالية غير صحيحة.');
+          if (neu === oldPw) throw new Error('كلمة المرور الجديدة يجب أن تختلف عن الحالية.');
+          await D.setPasswordHash(ui.id, await hashPassword(neu)); closeSheet(); toast('تم تغيير كلمة المرور.'); return;
+        }
+        case 'delete-account': {
+          const c = D.read().customers.find(x => x.id === ui.id);
+          if (!c || !(await verifyPassword(String(fd.get('password')), c.authHash))) throw new Error('كلمة المرور غير صحيحة؛ لم يُحذف الحساب.');
+          const id = ui.id; await D.deleteAccount(id);
+          try { localStorage.removeItem('aman.customer.fav.' + id); localStorage.removeItem('aman.customer.welcome.' + id); const r = JSON.parse(localStorage.getItem('aman.customer.remember') || 'null'); if (r) localStorage.removeItem('aman.customer.remember'); } catch { /* التخزين غير متاح */ }
+          sessionStorage.removeItem('aman.customer'); ui.id = ''; ui.auth = 'login'; ui.buy = null; closeSheet();
+          history.replaceState({ amanCustomer: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); toast('حُذف الحساب وأُخفيت هويتك.'); return;
         }
         case 'number-search': ui.lookup = D.searchNumberStatus(ui.id, fd.get('number')); render(); return;
         case 'add-number': await D.addNumber(ui.id, fd.get('number')); closeSheet(); render(); toast('أُضيف الرقم إلى أرقامك.'); return;

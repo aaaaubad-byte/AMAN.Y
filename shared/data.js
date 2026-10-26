@@ -42,7 +42,7 @@
       financeEntries: [], notifications: [], idempotencyKeys: [],
       notificationSettings: { subscriptionExpiring: true, purchaseStatus: true, taskUpdates: true, protectionUpdates: true },
       admin: { id: 'admin-local', name: 'مدير النظام', email: 'admin@aman.test', darkMode: false, lockEnabled: false },
-      content: { terms: '', privacy: '', contact: '' }
+      content: { terms: '', privacy: '', contact: '', faq: '' }
     };
   }
 
@@ -52,7 +52,7 @@
     const hadNumberLinks=Array.isArray(d.numberLinks);const collections=['customers','companies','packages','protectionPackages','paymentMethods','purchaseRequests','numbers','numberLinks','subscriptions','protectionOperations','pointTransactions','tasks','operations','financeEntries','notifications','idempotencyKeys'];
     for(const k of collections){if(d[k]===undefined)d[k]=[];else if(!Array.isArray(d[k]))throw new Error(`بنية مجموعة ${k} غير صالحة؛ لم تُستبدل البيانات.`);}
     if(!d.admin)d.admin={id:'admin-demo',name:'مدير تجريبي',email:'admin@aman.test',darkMode:false,lockEnabled:false};
-    if(!d.content)d.content={terms:'',privacy:'',contact:''};
+    d.content={terms:'',privacy:'',contact:'',faq:'',...(d.content||{})};
     d.notificationSettings={subscriptionExpiring:true,purchaseStatus:true,taskUpdates:true,protectionUpdates:true,...(d.notificationSettings||{})};
     d.customers.forEach((c,i)=>{c.id ||= `legacy-customer-${i+1}`;c.accountId ||= c.id;c.status ||= 'active';c.isSubscriber=Boolean(c.isSubscriber||c.firstPurchaseApproved||d.purchaseRequests.some(r=>r.customerId===c.id&&['approved','معتمد','مكتملة'].includes(r.status)));});
     d.companies.forEach((c,i)=>{c.id ||= `legacy-company-${i+1}`;c.name ||= `شركة ${i+1}`;c.prefixes=safeArray(c.prefixes).map(String);c.lengths=safeArray(c.lengths).map(Number);c.dailyRate=Number(c.dailyRate||c.dailyTariff||c.tariff||0);c.durations=safeArray(c.durations).map(Number);if(c.taskSchedule)c.taskSchedule={...c.taskSchedule};c.active=c.active!==false;});
@@ -159,6 +159,23 @@
       if(r.status!=='pending')throw new Error('لا يمكن إلغاء الطلب: لم يعد معلقًا.');
       r.status='cancelled';r.cancelledAt=now();r.cancelledBy='customer';
       return {entityType:'purchase_request',entityId:r.id,summary:`إلغاء العميل لطلب ${r.id}`};
+    });
+  }
+  // تغيير كلمة المرور: التجزئة تُحسب في الواجهة (PBKDF2)؛ هنا تُخزَّن وتُسجَّل في التدقيق دون أي نص صريح
+  async function setPasswordHash(customerId, authHash) {
+    if(typeof authHash!=='string'||!authHash)throw new Error('تجزئة كلمة المرور غير صالحة.');
+    return transact(customerId,'password_changed',db=>{const c=db.customers.find(x=>x.id===customerId);if(!c||c.status==='deleted')throw new Error('الحساب غير موجود.');c.authHash=authHash;c.passwordChangedAt=now();return{entityType:'customer',entityId:c.id,summary:'تغيير كلمة مرور العميل'};});
+  }
+  // حذف الحساب = إخفاء هوية لا حذف سجلات: يبقى سجل النقاط والطلبات والاشتراكات والمالية والتدقيق، وتُلغى الطلبات المعلقة، وتُحذف الإشعارات وروابط المتابعة
+  async function deleteAccount(customerId) {
+    return transact(customerId,'account_deleted',db=>{
+      const c=db.customers.find(x=>x.id===customerId);if(!c||c.status==='deleted')throw new Error('الحساب غير موجود.');
+      const stamp=now(),label=c.accountId||c.id;
+      for(const r of db.purchaseRequests)if(r.customerId===customerId&&r.status==='pending'){r.status='cancelled';r.cancelledAt=stamp;r.cancelledBy='account_deleted';}
+      db.numberLinks=db.numberLinks.filter(l=>l.customerId!==customerId);
+      db.notifications=db.notifications.filter(n=>n.customerId!==customerId);
+      c.name='حساب محذوف';c.email=`deleted-${label}@removed.invalid`;delete c.authHash;c.status='deleted';c.deletedAt=stamp;
+      return{entityType:'customer',entityId:c.id,summary:`حذف حساب العميل ${label} وإخفاء هويته مع الإبقاء على السجلات المالية والتدقيقية`};
     });
   }
   async function reviewPurchase(adminId, requestId, decision, note='') {
@@ -309,7 +326,7 @@
     return transact(adminId,'admin_notice_created',db=>{const recipients=audience==='customer'?[db.customers.find(c=>c.id===customerId)].filter(Boolean):db.customers.filter(c=>audience==='subscribers'?isSubscriber(db,c.id):true);if(!recipients.length)throw new Error('لا يوجد جمهور مطابق.');for(const c of recipients)db.notifications.push({id:uid('notice'),customerId:c.id,title:String(title).trim(),body:String(body).trim(),status:'delivered-local',createdAt:now(),readAt:null});return {entityType:'notification',entityId:null,summary:`إشعار محلي إلى ${recipients.length} عميلًا`};});
   }
   async function markNoticeRead(customerId, noticeId) { return transact(customerId,'notification_read',db=>{const n=db.notifications.find(x=>x.id===noticeId&&x.customerId===customerId);if(!n)throw new Error('الإشعار غير موجود لهذا الحساب.');if(!n.readAt)n.readAt=now();return {entityType:'notification',entityId:n.id,summary:'قراءة إشعار محلي'};}); }
-  async function updateContent(adminId, key, value) { if(!['terms','privacy','contact'].includes(key))throw new Error('نوع المحتوى غير صالح.');return transact(adminId,'content_updated',db=>{db.content[key]=String(value||'');return {entityType:'content',entityId:key,summary:`تعديل محتوى ${key}`};}); }
+  async function updateContent(adminId, key, value) { if(!['terms','privacy','contact','faq'].includes(key))throw new Error('نوع المحتوى غير صالح.');return transact(adminId,'content_updated',db=>{db.content[key]=String(value||'');return {entityType:'content',entityId:key,summary:`تعديل محتوى ${key}`};}); }
   function readForCustomer(customerId){const db=read(),customer=db.customers.find(c=>c.id===customerId);if(!customer)throw new Error('الحساب غير موجود.');const linked=customerNumbers(db,customerId),ownedSubs=db.subscriptions.filter(x=>x.customerId===customerId);db.customers=[customer];db.numbers=linked.map(n=>{const copy={...n};if(copy.customerId&&copy.customerId!==customerId)copy.customerId=null;copy.radar=radarFor(db,customerId,n);const active=db.subscriptions.find(s=>s.numberId===n.id&&s.status==='active'&&new Date(s.startsAt||0)<=Date.now()&&new Date(s.endsAt)>Date.now());copy.protectionStatus=active?'protected':db.subscriptions.some(s=>s.numberId===n.id)?'expired':'none';copy.liveSub=active?{startsAt:active.startsAt,endsAt:active.endsAt,own:active.customerId===customerId}:null;return copy;});db.subscriptions=ownedSubs;db.tasks=db.tasks.filter(x=>x.customerId===customerId);db.protectionOperations=db.protectionOperations.filter(x=>x.customerId===customerId);db.pointTransactions=db.pointTransactions.filter(x=>x.customerId===customerId);db.purchaseRequests=db.purchaseRequests.filter(x=>x.customerId===customerId);db.notifications=db.notifications.filter(x=>x.customerId===customerId);db.operations=db.operations.filter(x=>x.actorId===customerId||x.customerId===customerId||x.entityId===customerId);db.financeEntries=[];db.admin=null;db.numberLinks=db.numberLinks.filter(x=>x.customerId===customerId);db.idempotencyKeys=db.idempotencyKeys.filter(x=>x.customerId===customerId);return db;}
   // الرادار تفضيل خاص بكل عميل ويُحفظ على علاقة الربط لا على سجل الرقم المشترك؛ القيمة القديمة على الرقم تُحترم لمالكه الأصلي فقط.
   function radarFor(db,customerId,n){const link=db.numberLinks.find(l=>l.numberId===n.id&&l.customerId===customerId);if(link&&link.radar!==undefined)return !!link.radar;return !!(n.radar&&n.customerId===customerId);}
@@ -332,5 +349,5 @@
   }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,cancelPurchase,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,cancelPurchase,setPasswordHash,deleteAccount,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });

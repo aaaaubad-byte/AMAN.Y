@@ -230,6 +230,44 @@ test('U6: زر التجديد/التمديد داخل بطاقة الاشترا�
   d.protectionPackages = []; assert.doesNotMatch(S.build('subscriptions', d, c, x({ id: c.id })).list(), /data-act="protection-path"/, 'لا باقات: لا أزرار');
 });
 
+test('U7: تغيير كلمة المرور يخزّن التجزئة فقط ويُسجَّل في التدقيق، ويرفض الحساب المحذوف', async () => {
+  seed();
+  await D.setPasswordHash('cus-demo-subscriber', 'pbkdf2$1$aa$bb');
+  const d = D.read(), c = d.customers.find(v => v.id === 'cus-demo-subscriber');
+  assert.equal(c.authHash, 'pbkdf2$1$aa$bb'); assert.ok(d.operations.some(o => o.type === 'password_changed' && !JSON.stringify(o).includes('pbkdf2')));
+  await assert.rejects(() => D.setPasswordHash('cus-demo-subscriber', ''), /غير صالحة/);
+});
+
+test('U7: حذف الحساب يخفي الهوية ويلغي المعلق ويحذف الإشعارات والمتابعة ويُبقي السجلات المالية والنقاط والتدقيق', async () => {
+  seed();
+  const before = D.read(), id = 'cus-demo-subscriber', fin = before.financeEntries.length, pts = before.pointTransactions.filter(t => t.customerId === id).length, reqs = before.purchaseRequests.filter(r => r.customerId === id).length, subs = before.subscriptions.filter(s => s.customerId === id).length;
+  await D.deleteAccount(id);
+  const d = D.read(), c = d.customers.find(v => v.id === id);
+  assert.equal(c.status, 'deleted'); assert.equal(c.name, 'حساب محذوف'); assert.doesNotMatch(c.email, /subscriber@|demo/); assert.equal(c.authHash, undefined);
+  assert.equal(d.financeEntries.length, fin); assert.equal(d.pointTransactions.filter(t => t.customerId === id).length, pts);
+  assert.equal(d.purchaseRequests.filter(r => r.customerId === id).length, reqs); assert.equal(d.subscriptions.filter(s => s.customerId === id).length, subs);
+  assert.equal(d.purchaseRequests.filter(r => r.customerId === id && r.status === 'pending').length, 0);
+  assert.equal(d.notifications.filter(n => n.customerId === id).length, 0); assert.equal(d.numberLinks.filter(l => l.customerId === id).length, 0);
+  assert.ok(d.operations.some(o => o.type === 'account_deleted'));
+  await assert.rejects(() => D.deleteAccount(id), /غير موجود/);
+  await assert.rejects(() => D.setPasswordHash(id, 'x'), /غير موجود/);
+  // الإدارة تعرض الحساب المحذوف دون أخطاء
+  for (const r of ['customers/all', `customer/${id}`, 'requests/all', 'finance', 'home']) { const v = AmanAdminScreens.build(r, d, { q: '', filter: 'all', demo: false }); assert.doesNotMatch(v.html, /undefined|\[object Object\]|NaN/, r); }
+});
+
+test('U7: المساعدة تعرض الأسئلة الشائعة وبيانات التواصل من محتوى الإدارة وتتحمل غيابهما، والحساب يعرض الإجراءات الجديدة', async () => {
+  seed();
+  await D.updateContent('admin', 'faq', 'كيف أشتري نقاطًا؟\nمن شاشة شراء نقاط.\n\nكيف أجدد؟\nمن الاشتراكات.');
+  await D.updateContent('admin', 'contact', 'واتساب: 700000000');
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0];
+  const h = S.build('help', d, c, x({ id: c.id })).html;
+  assert.match(h, /<summary>كيف أشتري نقاطًا؟<\/summary>/); assert.match(h, /من الاشتراكات/); assert.match(h, /واتساب: 700000000/); assert.match(h, /1\. اشحن رصيد أمان|١\. اشحن رصيد أمان/);
+  assert.equal(S.parseFaq('س\nج\n\nس2').length, 2); assert.equal(S.parseFaq('').length, 0);
+  d.content.faq = ''; d.content.contact = ''; assert.match(S.build('help', d, c, x({ id: c.id })).html, /لم تضف الإدارة أسئلة شائعة بعد/);
+  d.content.faq = '<img src=x onerror=1>\n<b>x</b>'; assert.doesNotMatch(S.build('help', d, c, x({ id: c.id })).html, /<img src=x|<b>x/);
+  const a = S.build('account', d, c, x({ id: c.id })).html; assert.match(a, /data-act="password-open"/); assert.match(a, /data-act="delete-open"/);
+});
+
 test('عزل العميل: لا يحمّل ملفات الإدارة ولا يعدّل الملفات المشتركة ولا يصل للمخزن مباشرة', () => {
   const html = read('customer.html');
   assert.doesNotMatch(html, /admin\.css|admin-kit|admin-screens|admin-model|admin\.js|reference\.css|customer-base\.css/);
@@ -433,7 +471,7 @@ test('U2-د: تحميل المزيد والسحب للتحديث في العمي
   const js = read('customer.js'), css = read('customer.css');
   assert.match(js, /const PAGE = 30/);assert.match(js, /function applyPaging\(\)/);
   assert.match(js, /case 'load-more': ui\.limit = \(ui\.limit \|\| PAGE\) \+ PAGE; applyPaging\(\)/);
-  assert.match(js, /\n    applyPaging\(\);\n    if \(opt\.top\)/, 'يُطبَّق بعد كل عرض');
+  assert.match(js, /\n    applyPaging\(\);\n(    maybeWelcome\(snap\);\n)?    if \(opt\.top\)/, 'يُطبَّق بعد كل عرض');
   assert.match(js, /b\.innerHTML = S\.build\(ui\.route, d, c, ctxNow\(\)\)\.list\(\); applyPaging\(\)/, 'ويُطبَّق بعد تحديث البحث');
   assert.equal((js.match(/ui\.limit = 0/g) || []).length >= 5, true, 'إعادة الضبط عند تغيّر الشاشة والبحث والفلتر والمسح');
   assert.match(css, /\.row\[hidden\]\{display:none!important\}/);
