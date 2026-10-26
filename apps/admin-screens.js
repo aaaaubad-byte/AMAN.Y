@@ -52,6 +52,19 @@ ${K.card([
   const PAGE = 30;
   const paged = (rows, ui, draw) => { const lim = ui.limit || PAGE; return draw(rows.slice(0, lim)) + (rows.length > lim ? `<div class="more-wrap">${K.btn(`تحميل المزيد (${N(rows.length - lim)} متبقٍ)`, 'load-more', 'small')}</div>` : ''); };
   /* حالة فارغة بنتيجة بحث: تعرض مسح البحث والتصفية (39) */
+  // ملاحظات داخلية للمخولين فقط (بند 10): لا تصل نسخة العميل أبدًا
+  function notesSection(d, type, id) {
+    const notes = (d.internalNotes || []).filter(n => n.entityType === type && n.entityId === id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const rows = notes.length ? K.card(notes.map(n => K.row({ icon: 'text', title: n.text, sub: E(DT(n.createdAt)), val: `<button type="button" class="copy-mini" data-act="note-delete" data-id="${E(n.id)}" aria-label="حذف الملاحظة">${K.ico('close')}</button>`, plain: true }))) : K.note('لا توجد ملاحظات داخلية. لا يراها العميل.');
+    return `${K.section('ملاحظات داخلية')}${rows}<div style="margin-top:10px">${K.btn('إضافة ملاحظة', 'note-add', '', `data-type="${E(type)}" data-id="${E(id)}"`, 'plus')}</div>`;
+  }
+  // تنبيه المرجع المكرر (بنود 11 و32): نفس الوسيلة = تكرار محتمل، وسيلة مختلفة = للمراجعة
+  function dupBlock(d, r) {
+    const x = D.duplicateReferences(d, r); if (!x.same.length && !x.other.length) return '';
+    const link = q => K.row({ icon: 'receipt', tone: q.status === 'approved' ? 'ok' : q.status === 'pending' ? 'warn' : 'bad', title: M.customer(d, q.customerId)?.name || 'عميل غير موجود', sub: `${E(q.paymentMethodSnapshot?.name || '—')} · ${E(DT(q.createdAt))}`, pill: K.pill(M.status(q.status), M.tone(q.status)), to: 'request/' + q.id });
+    const text = `${x.same.length ? `<small style="display:block;line-height:1.9;margin-top:4px">• استُخدم المرجع نفسه بوسيلة الدفع نفسها في ${N(x.same.length)} طلب آخر؛ تحقق قبل الاعتماد حتى لا يُعتمد الدفع مرتين.</small>` : ''}${x.other.length ? `<small style="display:block;line-height:1.9">• ظهر المرجع نفسه بوسيلة دفع مختلفة في ${N(x.other.length)} طلب؛ للمراجعة.</small>` : ''}`;
+    return `<div style="margin-top:12px">${K.callout('info', 'مرجع مكرر', text, false, 'id="dupAlert"')}</div>${K.card([...x.same, ...x.other].map(link))}`;
+  }
   const emptyQ = (filtered, qText, otherText, icon) => filtered ? K.empty(qText, icon, '', K.btn('مسح البحث والتصفية', 'clear-filter', 'small')) : K.empty(otherText, icon);
   function requests(d, a, ui) {
     const tab = ['pending', 'approved', 'rejected', 'all'].includes(a) ? a : 'pending';
@@ -59,7 +72,7 @@ ${K.card([
     const list = () => {
       const rows = d.purchaseRequests.filter(r => tab === 'all' || r.status === tab).filter(r => { const c = M.customer(d, r.customerId); return match(ui.q, c?.name, c?.email, r.id, r.paymentReference, r.packageSnapshot?.name, r.paymentMethodSnapshot?.name); }).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
       if (!rows.length) return emptyQ(!!ui.q, 'لا توجد طلبات تطابق البحث.', 'لا توجد طلبات في هذه القائمة.', 'receipt');
-      return paged(rows, ui, rows => K.card(rows.map(r => { const c = M.customer(d, r.customerId); return K.row({ icon: 'receipt', tone: r.status === 'pending' ? 'warn' : r.status === 'approved' ? 'ok' : 'bad', title: c?.name || 'عميل غير موجود', sub: `${E(r.packageSnapshot?.name || 'باقة قديمة')} · ${N(r.packageSnapshot?.points)} نقطة`, sub2: `${E(r.paymentMethodSnapshot?.name || '—')} · ${E(DT(r.createdAt))}`, val: YER(r.packageSnapshot?.price), pill: K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }); })));
+      return paged(rows, ui, rows => K.card(rows.map(r => { const c = M.customer(d, r.customerId); return K.row({ icon: 'receipt', tone: r.status === 'pending' ? 'warn' : r.status === 'approved' ? 'ok' : 'bad', title: c?.name || 'عميل غير موجود', sub: `${E(r.packageSnapshot?.name || 'باقة قديمة')} · ${N(r.packageSnapshot?.points)} نقطة`, sub2: `${E(r.paymentMethodSnapshot?.name || '—')} · ${ltr(r.paymentReference || '—')} · ${E(DT(r.createdAt))}`, val: YER(r.packageSnapshot?.price), pill: (D.duplicateReferences(d, r).same.length && r.status === 'pending' ? K.pill('مرجع مكرر', 'bad') : '') + K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }); })));
     };
     return { tab: 'requests', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">طلبات النقاط</h1><p class="lede">مراجعة طلبات شراء النقاط. الاعتماد يخص الطلب فقط.</p>
 ${K.tabs([['pending', 'المعلقة', cnt('pending')], ['approved', 'المعتمدة', cnt('approved')], ['rejected', 'المرفوضة', cnt('rejected')], ['all', 'الكل', cnt('all')]], tab, 'requests')}
@@ -72,9 +85,9 @@ ${K.toolbar('ابحث باسم العميل أو مرجع الدفع', ui.q)}<di
     const c = M.customer(d, r.customerId), pk = r.packageSnapshot || {}, pm = r.paymentMethodSnapshot || {}, pend = r.status === 'pending';
     const html = `<div class="hero"><div class="hero-top">${K.tile('receipt')}<div><h2>${E(c?.name || 'عميل غير موجود')}</h2><p>${E(c?.email || '—')}</p></div></div><small>${E(pk.name || 'باقة قديمة')}</small><div class="big">${N(pk.points)}<em>نقطة</em></div><small>القيمة المالية ${YER(pk.price)}</small><span class="pill ${r.status === 'approved' ? 'ok' : ''}">${M.status(r.status)}</span></div>
 ${pend ? `<div style="margin-top:12px">${K.callout('info', 'ما الذي يحدث عند الاعتماد؟', `<small style="display:block;line-height:1.9;margin-top:4px">• تُضاف ${N(pk.points)} نقطة إلى رصيد العميل في دفتر النقاط.<br>• يُسجَّل إيراد ${YER(pk.price)} في السجل المالي، وهو مستقل عن النقاط.<br>• لا يُنشأ اشتراك لأي رقم؛ تفعيل الحماية يتم من رصيد العميل لاحقًا.<br>• الرفض لا يضيف نقاطًا ولا إيرادًا.</small>`, true)}</div>` : ''}
-${K.section('بيانات الطلب')}${K.kv([['العميل', c ? E(c.name) : '—'], ['الباقة المحفوظة', `${E(pk.name || '—')} · ${N(pk.points)} نقطة`], ['القيمة المالية', YER(pk.price)], ['الحالة', M.status(r.status), true], ['تاريخ الإنشاء', E(DT(r.createdAt))], ['تاريخ المراجعة', E(DT(r.reviewedAt))]])}
+${dupBlock(d, r)}${K.section('بيانات الطلب')}${K.kv([['العميل', c ? E(c.name) : '—'], ['الباقة المحفوظة', `${E(pk.name || '—')} · ${N(pk.points)} نقطة`], ['القيمة المالية', YER(pk.price)], ['الحالة', M.status(r.status), true], ['تاريخ الإنشاء', E(DT(r.createdAt))], ['تاريخ المراجعة', E(DT(r.reviewedAt))]])}
 ${K.section('بيانات الدفع (لقطة وقت الطلب)')}${K.kv([['وسيلة الدفع', E(pm.name || '—')], ['تعليمات الدفع', E(pm.instructions || '—')], ['مرجع الإثبات', ltr(r.paymentReference || '—') + (r.paymentReference ? K.copyBtn(r.paymentReference, 'المرجع') : '')], ['رقم الطلب', ltr(r.id) + K.copyBtn(r.id, 'رقم الطلب')]])}
-${r.reviewNote ? K.section('ملاحظة المراجعة') + `<div class="card"><p class="note in-card" style="color:var(--ink)">${E(r.reviewNote)}</p></div>` : ''}
+${notesSection(d, 'request', r.id)}${r.reviewNote ? K.section('ملاحظة المراجعة') + `<div class="card"><p class="note in-card" style="color:var(--ink)">${E(r.reviewNote)}</p></div>` : ''}
 ${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `${D.isSubscriber(d, c.id) ? 'مشترك' : 'غير مشترك'} · رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
     return { chrome: 'focus', title: 'طلب شراء نقاط', sub: DY(r.createdAt), html, bar: pend ? `<div class="actionbar two">${K.btn('اعتماد الطلب', 'review-open', 'primary', `data-id="${E(r.id)}" data-decision="approved"`)}${K.btn('رفض الطلب', 'review-open', '', `data-id="${E(r.id)}" data-decision="rejected"`)}</div>` : '' };
   }
@@ -142,6 +155,7 @@ ${K.toolbar('ابحث بالاسم أو البريد أو المعرّف', ui.q)
     const html = `<div class="hero"><div class="hero-top">${K.tile(isSub ? 'shield' : 'user')}<div><h2>${E(c.name)}</h2><p class="ltr">${E(c.email)}</p></div></div><small>رصيد نقاط أمان</small><div class="big">${N(D.balance(id, d))}<em>نقطة</em></div><span class="pill ${isSub ? 'ok' : ''}">${isSub ? 'مشترك' : 'حساب غير مشترك'}</span></div>
 <p class="note">الرصيد مشتق من دفتر النقاط. صفة «مشترك» تثبت باعتماد أول طلب شراء نقاط ولا تعني اشتراك أي رقم؛ مدة اشتراك كل رقم في تبويب الأرقام، والمبالغ بالريال في السجل المالي العام.</p>
 ${K.section('بيانات الحساب')}${K.kv([['الاسم', E(c.name)], ['البريد الإلكتروني', ltr(c.email)], ['معرّف الحساب', ltr(c.accountId || c.id)], ['الصفة', isSub ? 'مشترك' : 'غير مشترك']])}
+${notesSection(d, 'customer', id)}
 ${K.tabs([['numbers', 'الأرقام', ns.length], ['requests', 'الطلبات', rs.length], ['subs', 'الاشتراكات', subs.length], ['ops', 'العمليات']], tab, 'customer')}${body}`;
     return { chrome: 'focus', title: 'تفاصيل العميل', sub: c.name, html, end: K.tileAction('add-number-open', 'plus', 'إضافة رقم للعميل', `data-customer="${E(c.id)}"`) };
   }
@@ -165,6 +179,11 @@ ${K.tabs([['active', 'اشتراكات فعالة', d.subscriptions.filter(M.isL
 ${K.toolbar('ابحث برقم الهاتف أو العميل أو الشركة', ui.q, tab === 'all' ? [['all', 'كل الحالات'], ['active', 'له اشتراك فعال'], ['inactive', 'بلا اشتراك فعال']] : null, ui.filter)}<div id="listbody">${list()}</div>` };
   }
 
+  // رقم مرتبط بأكثر من عميل (بند 94): تنبيه مع بقاء المتابعة المشتركة مسموحة
+  function holdersBlock(d, n) {
+    const ids = D.numberHolders(d, n); if (ids.length < 2) return '';
+    return `<div style="margin-top:12px">${K.callout('info', `مرتبط بـ ${N(ids.length)} عملاء`, '<small style="display:block;line-height:1.9;margin-top:4px">المتابعة المشتركة مسموحة؛ الاشتراك والتجديد لصاحب الاشتراك فقط. راجع العملاء قبل أي تعديل على الرقم.</small>', false, 'id="holdersAlert"')}</div>${K.card(ids.map(i => { const c = M.customer(d, i); return K.row({ icon: 'user', title: c?.name || '—', sub: c ? ltr(c.email) : '', to: 'customer/' + i }); }))}`;
+  }
   function numberDetail(d, id) {
     const n = M.number(d, id);
     if (!n) return missing('الرقم غير موجود.');
@@ -177,6 +196,7 @@ ${K.toolbar('ابحث برقم الهاتف أو العميل أو الشركة'
 ${K.section('المالك والشركة')}${K.kv([['المالك', E(c?.name || '—')], ['البريد الإلكتروني', c ? ltr(c.email) : '—'], ['الشركة', E(co?.name || '—')], ['حالة التقييد', n.restricted ? `مقيّد: ${E(n.restrictionReason || '—')}` : 'غير مقيّد']])}
 ${K.section('الاشتراك')}${sub ? K.kv([['الحالة', E(M.status(sub.status)), true], ['بداية الاشتراك', E(DY(sub.startsAt))], ['المدة والانتهاء', `${N(sub.days)} يوم · ${E(DY(sub.endsAt))}`], ['التعرفة المحفوظة', `${N(sub.rateSnapshot)} نقطة/يوم`], ['تكلفة العملية', `${N(sub.pointsCost)} نقطة`]]) : K.empty('لا يوجد سجل اشتراك مرتبط بهذا الرقم.', 'shield')}
 ${sub ? K.section(`مخطط المهام (${plan.length})`) + (plan.length ? K.card(plan.map(t => { const cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'completed' ? 'ok' : cl === 'overdue' ? 'bad' : '', title: DT(t.dueAt), sub: `${YER(t.expenseAmount)} · ${t.executedAt ? 'نُفذت ' + E(DT(t.executedAt)) : 'غير منفذة'}`, pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })) : K.empty('لا توجد مهام لهذا الاشتراك.', 'tasks')) : ''}
+${holdersBlock(d, n)}${notesSection(d, 'number', n.id)}
 ${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
     return { chrome: 'focus', title: 'تفاصيل الرقم', sub: n.number, subLtr: true, html, bar: n.restricted ? `<div class="actionbar">${K.btn('رفع التقييد', 'unrestrict', 'primary', `data-id="${E(n.id)}"`)}</div>` : '' };
   }
@@ -220,7 +240,8 @@ ${g('الإعداد', [
       { icon: 'card', title: 'وسائل الدفع', sub: `${N(d.paymentMethods.length)} وسيلة`, to: 'payments' }])}
 ${g('التواصل', [
       { icon: 'bell', title: 'الإشعارات', sub: 'أنواع الإشعارات وإشعارات الإدارة', to: 'notices' },
-      { icon: 'text', title: 'المحتوى', sub: 'الشروط والخصوصية وبيانات التواصل', to: 'content' }])}
+      { icon: 'text', title: 'المحتوى', sub: 'الشروط والخصوصية والتواصل والأسئلة الشائعة', to: 'content' },
+      { icon: 'doc', title: 'قوالب الرفض والرد', sub: `${N((d.messageTemplates || []).length)} قالب · قابلة للتعديل`, to: 'templates' }])}
 ${g('النظام', [
       { icon: 'audit', title: 'سجل التدقيق', sub: `${N(d.operations.length)} حدث محلي`, to: 'audit' },
       { icon: 'user', title: 'الحساب الإداري', sub: 'الوضع الداكن، نسخة احتياطية، الخروج', to: 'account' }])}`, badge: pend };
@@ -352,6 +373,17 @@ ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(lo
   function content(d) {
     return { chrome: 'tabs', tab: 'more', html: `${K.bar('المحتوى', 'نصوص تظهر في تطبيق العميل')}${K.card(CONTENT.map(([k, l]) => K.row({ icon: 'text', title: l, sub: E((d.content?.[k] || '').trim().slice(0, 70) || 'لم يُضف نص بعد'), to: 'content/' + k })))}` };
   }
+  const TPL_KIND = { reject: 'قوالب الرفض', reply: 'قوالب الرد عند الاعتماد' };
+  function templates(d) {
+    const all = d.messageTemplates || [];
+    const group = kind => { const rows = all.filter(t => t.kind === kind); return K.section(TPL_KIND[kind]) + (rows.length ? K.card(rows.map(t => K.row({ icon: 'doc', title: t.title, sub: E(t.body.length > 70 ? t.body.slice(0, 70) + '…' : t.body), to: `template/${t.id}/edit` }))) : K.note('لا توجد قوالب. يمكنك كتابة النص يدويًا عند المراجعة.')); };
+    return { chrome: 'focus', title: 'قوالب الرفض والرد', sub: 'تُعبّأ في نافذة المراجعة ويمكن تعديل نصها قبل الاعتماد', html: `${group('reject')}${group('reply')}${K.note('نص القالب يُنسخ إلى حقل المراجعة فقط؛ تعديل القالب لا يغيّر الطلبات السابقة.')}`, bar: `<div class="actionbar">${K.btn('قالب جديد', 'go', 'primary', 'data-to="template/new"', 'plus')}</div>` };
+  }
+  function templateForm(d, id) {
+    const t = id ? (d.messageTemplates || []).find(x => x.id === id) : {};
+    if (id && !t) return missing('القالب غير موجود.');
+    return formView(id ? 'تعديل قالب' : 'قالب جديد', t.title || '', 'template-form', `<input type="hidden" name="id" value="${E(t.id || '')}">${K.fields(K.field({ name: 'kind', label: 'النوع', type: 'select', value: t.kind || 'reject', options: [['reject', 'رفض'], ['reply', 'رد عند الاعتماد']] }) + K.field({ name: 'title', label: 'العنوان', required: true, value: t.title || '' }) + K.field({ name: 'body', label: 'النص', type: 'textarea', required: true, rows: 5, value: t.body || '' }))}`, 'حفظ القالب', id ? `<div style="margin-top:12px">${K.btn('حذف القالب', 'template-delete', '', `data-id="${E(id)}"`, 'close')}</div>` : '');
+  }
   function contentEdit(d, key) {
     const it = CONTENT.find(x => x[0] === key);
     if (!it) return missing('نوع المحتوى غير معروف.');
@@ -425,6 +457,8 @@ ${K.section('البيانات')}${K.card([K.row({ icon: 'download', title: 'تن
       case 'payment': return a === 'new' ? paymentForm(d) : b === 'edit' ? paymentForm(d, a) : pay(d, a);
       case 'notices': return notices(d);
       case 'content': return a ? contentEdit(d, a) : content(d);
+      case 'templates': return templates(d);
+      case 'template': return a === 'new' ? templateForm(d) : templateForm(d, a);
       case 'audit': return audit(d, ui);
       case 'search': return search(d, ui);
       case 'account': return account(d);

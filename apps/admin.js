@@ -184,14 +184,20 @@
 
   /* ===================== نوافذ العمليات ===================== */
   const strong = t => `<b style="color:var(--ink)">${t}</b>`;
+  // ترتيب قائمة الطلبات المعلقة كما تُعرض (الأحدث أولًا): «التالي» هو الطلب المعلق الذي يلي الحالي (بند 22/93)
+  const pendingIds = d => d.purchaseRequests.filter(r => r.status === 'pending').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(r => r.id);
+  const nextPendingAfter = (d, id) => { const ids = pendingIds(d), i = ids.indexOf(id); return ids.filter(x => x !== id)[Math.max(0, i)] || ''; };
   function reviewSheet(id, decision) {
     const d = D.read(), r = d.purchaseRequests.find(x => x.id === id);
     if (!r) return toast('الطلب غير موجود.', true);
-    const ok = decision === 'approved', pk = r.packageSnapshot || {}, c = M.customer(d, r.customerId);
+    const ok = decision === 'approved', pk = r.packageSnapshot || {}, c = M.customer(d, r.customerId), dup = D.duplicateReferences(d, r), next = nextPendingAfter(d, id);
+    const tpls = (d.messageTemplates || []).filter(t => t.kind === (ok ? 'reply' : 'reject'));
+    const chips = tpls.length ? `<div class="tpl-chips" role="group" aria-label="قوالب جاهزة">${tpls.map(t => `<button type="button" class="tpl-chip" data-act="tpl-apply" data-text="${E(t.body)}">${E(t.title)}</button>`).join('')}</div>` : '';
+    const dupWarn = dup.same.length ? K.callout('info', 'مرجع مكرر', `<small style="display:block;line-height:1.9;margin-top:4px">استُخدم المرجع نفسه بوسيلة الدفع نفسها في ${N(dup.same.length)} طلب آخر. ${ok ? 'تحقق قبل الاعتماد.' : ''}</small>`, false, 'id="dupSheetAlert"') : '';
     openSheet(ok ? 'اعتماد طلب النقاط' : 'رفض طلب النقاط',
-      `<p class="sheet-text">${ok ? `سيُضاف ${strong(N(pk.points) + ' نقطة')} إلى رصيد ${E(c?.name || 'العميل')}، ويُسجَّل إيراد ${strong(N(pk.price) + ' ر.ي')} في السجل المالي مرة واحدة. الاعتماد يخص طلب الشراء فقط ولا ينشئ اشتراكًا لأي رقم.` : 'سيُرفض الطلب دون إضافة نقاط أو تسجيل إيراد، ولا يمكن مراجعته مرة ثانية.'}</p>
-<div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (اختياري)' : 'سبب الرفض (اختياري)'}</label><input id="reviewNote" name="note" autocomplete="off" placeholder="${ok ? 'ملاحظة داخلية' : 'سبب الرفض أو ملاحظة'}"></div></div>${errBox}`,
-      K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + K.btn('إلغاء', 'sheet-close'));
+      `<p class="sheet-text">${ok ? `سيُضاف ${strong(N(pk.points) + ' نقطة')} إلى رصيد ${E(c?.name || 'العميل')}، ويُسجَّل إيراد ${strong(N(pk.price) + ' ر.ي')} في السجل المالي مرة واحدة. الاعتماد يخص طلب الشراء فقط ولا ينشئ اشتراكًا لأي رقم.` : 'سيُرفض الطلب دون إضافة نقاط أو تسجيل إيراد، ولا يمكن مراجعته مرة ثانية. يرى العميل السبب في تفاصيل الطلب وفي إشعاره.'}</p>${dupWarn}
+<div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (تظهر للعميل، اختياري)' : 'سبب الرفض (يظهر للعميل)'}</label>${chips}<textarea id="reviewNote" name="note" rows="3" maxlength="300" placeholder="${ok ? 'يمكنك اختيار قالب أو كتابة نص' : 'اختر قالبًا وعدّل نصه أو اكتب السبب'}"></textarea></div></div>${errBox}`,
+      K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + (next ? K.btn(ok ? 'اعتماد وفتح التالي' : 'رفض وفتح التالي', 'review-confirm', '', `data-confirm data-next="${E(next)}" data-id="${E(id)}" data-decision="${decision}"`) : '') + K.btn('إلغاء', 'sheet-close'));
   }
   function executeSheet(id) {
     const t = D.read().tasks.find(x => x.id === id);
@@ -254,9 +260,25 @@
         case 'logout-open': logoutSheet(); return;
         case 'logout-confirm': sessionStorage.removeItem('aman.admin'); ui.logged = false; closeSheet(); history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
         case 'review-confirm': {
-          const note = $('#reviewNote')?.value || '', decision = b.dataset.decision;
-          await run(async () => { await D.reviewPurchase(ADMIN, id, decision, note); closeSheet(); toast(decision === 'approved' ? 'اعتُمد الطلب: أُضيفت النقاط وسُجل الإيراد مرة واحدة، ولم يُنشأ اشتراك.' : 'رُفض الطلب دون نقاط أو إيراد.'); render(); }); return;
+          const note = ($('#reviewNote')?.value || '').trim(), decision = b.dataset.decision, next = b.dataset.next || '';
+          await run(async () => {
+            await D.reviewPurchase(ADMIN, id, decision, note); closeSheet();
+            toast((decision === 'approved' ? 'اعتُمد الطلب: أُضيفت النقاط وسُجل الإيراد مرة واحدة، ولم يُنشأ اشتراك.' : 'رُفض الطلب دون نقاط أو إيراد.') + (next ? ' فُتح الطلب التالي للمراجعة، ولم يُعتمد تلقائيًا.' : ''));
+            if (next) go('request/' + next, { replace: true }); else render();
+          }); return;
         }
+        case 'tpl-apply': { const t = $('#reviewNote'); if (t) { t.value = b.dataset.text || ''; t.focus(); } return; }
+        case 'note-add':
+          openSheet('ملاحظة داخلية', `<p class="sheet-text">لا تظهر للعميل أبدًا.</p><div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`) + K.btn('إلغاء', 'sheet-close')); setTimeout(() => $('#noteText')?.focus(), 50); return;
+        case 'note-save': await run(async () => { await D.addInternalNote(ADMIN, b.dataset.type, id, $('#noteText')?.value || ''); closeSheet(); render(); toast('حُفظت الملاحظة الداخلية.'); }, 'note'); return;
+        case 'note-delete': await run(async () => {
+          const prev = (D.read().internalNotes || []).find(x => x.id === id); await D.deleteInternalNote(ADMIN, id); render();
+          toast('حُذفت الملاحظة.', false, { fn: () => D.transact(ADMIN, 'internal_note_restored', d => { if (prev && !d.internalNotes.some(x => x.id === prev.id)) d.internalNotes.push(prev); return { entityType: 'internal_note', entityId: id, summary: 'استعادة ملاحظة داخلية' }; }) });
+        }); return;
+        case 'template-delete': await run(async () => {
+          const prev = (D.read().messageTemplates || []).find(x => x.id === id); await D.deleteTemplate(ADMIN, id); back(); 
+          toast('حُذف القالب.', false, { fn: () => D.transact(ADMIN, 'template_restored', d => { if (prev && !d.messageTemplates.some(x => x.id === prev.id)) d.messageTemplates.push(prev); return { entityType: 'template', entityId: id, summary: 'استعادة قالب' }; }) });
+        }); return;
         case 'execute-confirm': await run(async () => { await D.executeTask(ADMIN, id); closeSheet(); toast('نُفذت المهمة وسُجل مصروفها ومهمتها التالية وفق الخطة.'); render(); }); return;
         case 'unrestrict': await run(async () => { const prev = (({ restricted, restrictionReason, restrictedAt }) => ({ restricted, restrictionReason, restrictedAt }))(D.read().numbers.find(x => x.id === id) || {});
           await D.transact(ADMIN, 'number_restriction_cleared', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); delete n.restricted; delete n.restrictionReason; delete n.restrictedAt; return { entityType: 'number', entityId: n.id, summary: `رفع تقييد الرقم ${n.number}` }; });
@@ -307,6 +329,7 @@
     await run(async () => {
       switch (kind) {
         case 'company-form': await D.saveCompany(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), prefixes: splitValues(fd.get('prefixes')), lengths: splitValues(fd.get('lengths')), active: fd.has('active') }); toast('حُفظت بيانات الشركة وسُجل الحدث.'); back(); return;
+        case 'template-form': await D.saveTemplate(ADMIN, { id: fd.get('id') || undefined, kind: fd.get('kind'), title: fd.get('title'), body: fd.get('body') }); toast('حُفظ القالب.'); back(); return;
         case 'package-form': await D.savePackage(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), points: fd.get('points'), price: fd.get('price'), active: fd.has('active') }); toast('حُفظت الباقة وسُجل الحدث.'); back(); return;
         case 'protection-form': await D.saveProtectionPackage(ADMIN, { id: fd.get('id') || undefined, companyId: fd.get('companyId'), name: fd.get('name'), days: fd.get('days'), pointsCost: fd.get('pointsCost'), active: fd.has('active') }); toast('حُفظت باقة الحماية وسُجل الحدث.'); back(); return;
         case 'payment-form': await D.savePaymentMethod(ADMIN, { id: fd.get('id') || undefined, name: fd.get('name'), summary: fd.get('summary'), instructions: fd.get('instructions'), active: fd.has('active') }); toast('حُفظت وسيلة الدفع وسُجل الحدث.'); back(); return;

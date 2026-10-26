@@ -68,7 +68,7 @@
   const COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>';
   const copyBtn = (value, what) => `<button type="button" class="copy-mini" data-act="copy" data-copy="${esc(value)}" data-label="${esc(what)}" aria-label="نسخ ${esc(what)}">${COPY_SVG}</button>`;
   const note = t => `<p class="note">${esc(t)}</p>`;
-  const callout = (icon, title, text, dark = false) => `<div class="callout ${dark ? 'dark' : ''}">${tile(icon)}<div><b>${esc(title)}</b>${text}</div></div>`;
+  const callout = (icon, title, text, dark = false, attrs = '') => `<div class="callout ${dark ? 'dark' : ''}" ${attrs}>${tile(icon)}<div><b>${esc(title)}</b>${text}</div></div>`;
   const metrics = items => `<div class="metrics">${items.map(([l, v]) => `<div class="metric"><small>${esc(l)}</small><b>${v}</b></div>`).join('')}</div>`;
 
   /* ----- التبويبات والبحث ----- */

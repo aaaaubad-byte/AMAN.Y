@@ -61,7 +61,7 @@ test('صافي السجل المالي = الإيرادات - المصروفات
 
 test('كل مسارات الإدارة تبني عرضًا دون أخطاء على بيانات العينة وعلى مخزن فارغ', () => {
   const full = seed(), ids = { req: full.purchaseRequests[0].id, task: full.tasks[0].id, cus: full.customers[0].id, num: full.numbers[0].id, co: full.companies[0].id, pk: full.packages[0].id, pay: full.paymentMethods[0].id, fin: full.financeEntries[0].id };
-  const routes = ['home', 'requests/pending', 'requests/approved', 'requests/rejected', 'requests/all', `request/${ids.req}`, 'tasks/available', 'tasks/all', `task/${ids.task}`, 'customers/all', 'customers/subscribers', 'customers/users', `customer/${ids.cus}`, ...['numbers', 'requests', 'subs', 'ops'].map(t => `customer/${ids.cus}/${t}`), 'numbers/active', 'numbers/all', `number/${ids.num}`, 'finance', 'finance/revenue', 'finance/expense', `finance-entry/${ids.fin}`, 'more', 'companies', 'company/new', `company/${ids.co}`, `company/${ids.co}/edit`, `company/${ids.co}/tasks`, 'task-settings', 'packages', 'package/new', `package/${ids.pk}`, `package/${ids.pk}/edit`, 'protection', 'protection/new', 'payments', 'payment/new', `payment/${ids.pay}`, `payment/${ids.pay}/edit`, 'notices', 'content', 'content/terms', 'content/privacy', 'content/contact', 'audit', 'search', 'account', 'no/such/route'];
+  const routes = ['home', 'requests/pending', 'requests/approved', 'requests/rejected', 'requests/all', `request/${ids.req}`, 'tasks/available', 'tasks/all', `task/${ids.task}`, 'customers/all', 'customers/subscribers', 'customers/users', `customer/${ids.cus}`, ...['numbers', 'requests', 'subs', 'ops'].map(t => `customer/${ids.cus}/${t}`), 'numbers/active', 'numbers/all', `number/${ids.num}`, 'finance', 'finance/revenue', 'finance/expense', `finance-entry/${ids.fin}`, 'more', 'companies', 'company/new', `company/${ids.co}`, `company/${ids.co}/edit`, `company/${ids.co}/tasks`, 'task-settings', 'packages', 'package/new', `package/${ids.pk}`, `package/${ids.pk}/edit`, 'protection', 'protection/new', 'payments', 'payment/new', `payment/${ids.pay}`, `payment/${ids.pay}/edit`, 'notices', 'content', 'content/terms', 'content/privacy', 'content/contact', 'audit', 'search', 'account', 'templates', 'template/new', `template/${full.messageTemplates[0].id}/edit`, 'content/faq', 'no/such/route'];
   for (const d of [full, (D.setStorageForTests(store(JSON.stringify(D.seedData()))), D.read())]) {
     for (const r of routes) {
       let v;
@@ -155,7 +155,43 @@ test('U2-ج: تحميل المزيد والسحب للتحديث والتراج�
   assert.match(js, /pullToRefresh/);assert.match(js, /s\.scrollTop > 0 \|\| e\.target\.closest\?\.\('input,textarea,select'\)/, 'لا سحب داخل حقل أو بعد التمرير');
   assert.match(js, /function toast\(text, bad = false, undo = null\)/);assert.match(js, /case 'toast-undo'/);
   assert.match(js, /number_restriction_restored/);assert.match(js, /تراجع عن تحديث إعداد إداري/);
-  const fin = js.split("case 'review-confirm'")[1].split("case 'unrestrict'")[0];
+  const fin = js.split("case 'review-confirm'")[1].split("case 'tpl-apply'")[0]; // قبل حالات القوالب والملاحظات (غير مالية ولها تراجع)
+  const rest = js.split("case 'tpl-apply'")[1].split("case 'unrestrict'")[0];
+  assert.match(rest, /internal_note_restored/);assert.match(rest, /template_restored/);
   assert.doesNotMatch(fin, /fn:/, 'اعتماد/رفض/تنفيذ المهام بلا تراجع (مالية)');
   assert.doesNotMatch(js.split("case 'finance-add'")[1]?.split('\n')[0] || '', /fn:/);
+});
+
+test('U8: مرجع مكرر (نفس الوسيلة/وسيلة مختلفة) ورقم مشترك بين عملاء وقوالب وملاحظات داخلية لا تصل العميل', async () => {
+  const base = Fixture.seedData(); D.setStorageForTests(store(JSON.stringify(base)));
+  const cp = id => D.read().purchaseRequests.find(r => r.id === id);
+  await D.createPurchase('cus-demo-subscriber', 'pkg-100', 'pay-wallet', 'ZX-1');
+  await D.createPurchase('cus-demo-low', 'pkg-100', 'pay-wallet', ' zx-1 ');
+  await D.createPurchase('cus-demo-new', 'pkg-100', 'pay-bank', 'ZX-1');
+  const d = D.read(), rs = d.purchaseRequests.filter(r => String(r.paymentReference).trim().toLowerCase() === 'zx-1');
+  const a = rs.find(r => r.customerId === 'cus-demo-subscriber'), dup = D.duplicateReferences(d, a);
+  assert.equal(dup.same.length, 1); assert.equal(dup.same[0].customerId, 'cus-demo-low'); assert.equal(dup.other.length, 1);
+  assert.deepEqual(D.duplicateReferences(d, d.purchaseRequests.find(r => r.id === 'req-approved-demo')), { same: [], other: [] });
+  const html = S.build('requests/pending', d, ui()).html; assert.match(html, /مرجع مكرر/);
+  const det = S.build('request/' + a.id, d, ui()).html; assert.match(det, /id="dupAlert"/); assert.match(det, /ملاحظات داخلية/); assert.match(det, /data-act="note-add"/);
+  // رقم مشترك
+  await D.addNumber('cus-demo-low', '771234567');
+  const d2 = D.read(), n = d2.numbers.find(x => x.id === 'num-1001'); assert.equal(D.numberHolders(d2, n).length, 2);
+  assert.match(S.build('number/num-1001', d2, ui()).html, /id="holdersAlert"/); assert.doesNotMatch(S.build('number/num-2001', d2, ui()).html, /holdersAlert/);
+  // ملاحظات
+  await D.addInternalNote('admin', 'customer', 'cus-demo-low', 'عميل يحتاج متابعة');
+  await assert.rejects(() => D.addInternalNote('admin', 'customer', 'nope', 'x'), /غير موجود/); await assert.rejects(() => D.addInternalNote('admin', 'bad', 'x', 'x'), /غير صالح/); await assert.rejects(() => D.addInternalNote('admin', 'customer', 'cus-demo-low', '  '), /اكتب/);
+  assert.match(S.build('customer/cus-demo-low', D.read(), ui()).html, /عميل يحتاج متابعة/);
+  const cust = D.readForCustomer('cus-demo-low'); assert.deepEqual(cust.internalNotes, []); assert.deepEqual(cust.messageTemplates, []);
+  assert.doesNotMatch(JSON.stringify(cust), /عميل يحتاج متابعة/);
+  const note = D.read().internalNotes[0]; await D.deleteInternalNote('admin', note.id); assert.equal(D.read().internalNotes.length, 0);
+  // قوالب
+  assert.equal(D.read().messageTemplates.filter(t => t.kind === 'reject').length, 3);
+  await D.saveTemplate('admin', { kind: 'reject', title: 'قالب جديد', body: 'نص' }); const t = D.read().messageTemplates.at(-1);
+  await D.saveTemplate('admin', { id: t.id, kind: 'reply', title: 'معدّل', body: 'نص2' }); assert.equal(D.read().messageTemplates.find(x => x.id === t.id).kind, 'reply');
+  await assert.rejects(() => D.saveTemplate('admin', { kind: 'x', title: 'a', body: 'b' }), /مطلوبة/); await assert.rejects(() => D.saveTemplate('admin', { kind: 'reject', title: 'a', body: 'ب'.repeat(501) }), /500/);
+  await D.deleteTemplate('admin', t.id); await assert.rejects(() => D.deleteTemplate('admin', t.id), /غير موجود/);
+  for (const x of D.read().messageTemplates.slice()) await D.deleteTemplate('admin', x.id);
+  assert.deepEqual(D.read().messageTemplates, [], 'حذف الكل يُحترم ولا تُعاد القوالب الافتراضية');
+  assert.doesNotMatch(S.build('templates', D.read(), ui()).html, /undefined|\[object/);
 });

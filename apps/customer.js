@@ -566,6 +566,10 @@
     const t = e.target;
     if (t.id === 'q') { ui.q = t.value; ui.limit = 0; refreshList(); return; }
     if (t.id && t.closest?.('.field,.afield')) clearFieldError(t.id); // التعديل يزيل خطأ الحقل
+    if (t.id === 'reference') { // تنبيه فوري بتكرار مرجع سبق لهذا العميل استعماله (بند 11)؛ لا يكشف طلبات غيره
+      const v = t.value.trim().toLowerCase(), dup = !!v && data().purchaseRequests.some(r => r.customerId === ui.id && String(r.paymentReference || '').trim().toLowerCase() === v);
+      if (dup) setFieldError('reference', 'هذا المرجع استُخدم في طلب سابق لك؛ لن يُقبل مرة ثانية.');
+    }
     if (t.id === 's_pass') { // مؤشر قوة كلمة المرور: استرشادي فقط
       const m = $('#pass-strength'), s = K.passwordStrength(t.value);
       if (m) { m.dataset.level = String(s.level); m.dataset.key = s.key; m.querySelector('span').textContent = s.text; }

@@ -244,3 +244,9 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .toast-undo{flex:none;min-height:40px;padding:0 6px;font-weight:700;text-decoration:underline;color:inherit}
 .more-wrap{display:grid;margin-top:12px}
 .ptr{position:absolute;top:calc(8px + env(safe-area-inset-top));inset-inline:0;margin:0 auto;width:max-content;z-index:35;padding:8px 16px;border-radius:999px;background:var(--black);color:var(--on-black);font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.2)}
+
+/* ===== قوالب المراجعة وملاحظات الإدارة (U8) ===== */
+.tpl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
+.tpl-chip{min-height:36px;padding:0 14px;border-radius:999px;background:var(--tile);color:var(--ink);font-size:13px;font-weight:700}
+.tpl-chip:active{background:var(--line)}
+.field textarea{width:100%;border:0;background:transparent;padding:8px 0;font:inherit;font-size:16px;outline:none;resize:vertical;min-height:72px}
