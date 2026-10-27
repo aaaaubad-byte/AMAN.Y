@@ -250,3 +250,25 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .tpl-chip{min-height:36px;padding:0 14px;border-radius:999px;background:var(--tile);color:var(--ink);font-size:13px;font-weight:700}
 .tpl-chip:active{background:var(--line)}
 .field textarea{width:100%;border:0;background:transparent;padding:8px 0;font:inherit;font-size:16px;outline:none;resize:vertical;min-height:72px}
+
+/* ===== العملاء: شارات ووسوم وتحديد جماعي (U10) ===== */
+.rbadges{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.rbadges .pill{height:20px;font-size:11px;padding:0 8px}
+.tagchip{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:11px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;line-height:1}
+.tagrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tagrow .tagchip{height:30px;font-size:13px;padding:0 12px;color:var(--ink)}
+.tagrow .tagchip:has(.tagx){padding-inline-end:4px}
+.tagx{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;color:var(--muted);background:transparent}
+.tagx:active{background:var(--tile)}
+.tagx svg{width:12px;height:12px}
+.row.sel{background:var(--ok-bg)}
+.hero .hero-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.hero .hero-badges .pill{margin-top:0;background:#383c3c;color:#fff}
+.hero .hero-badges .pill.ok{background:#14382b;color:#7fe0bb}
+.hero .hero-badges .pill.bad{background:#4a1d1d;color:#ffb0b0}
+.hero .hero-badges .pill.warn{background:#4a3a14;color:#ffd27f}
+.btn-stack{display:grid;gap:10px}
+.selbar{gap:8px}
+.selcount{font-size:14px;font-weight:700;text-align:center}
+.selrow{display:flex;gap:8px}
+.selrow .btn{flex:1;min-width:0}

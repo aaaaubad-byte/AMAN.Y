@@ -96,8 +96,9 @@ test('اعتماد الطلب في الواجهة يوضح أنه لا ينشئ 
 
 test('صفة المشترك للحساب مشتقة من اعتماد شراء ومفصولة عن اشتراك الأرقام في شاشة العميل', () => {
   const d = seed(), html = S.build('customer/cus-demo-new', d, ui()).html;
-  assert.match(html, /حساب غير مشترك/);
-  assert.match(html, /لا تعني اشتراك أي رقم/);
+  assert.match(html, /<span class="pill ">مستخدم<\/span>/, 'تسمية «مستخدم» بدل «غير مشترك» في الإدارة (U10)');
+  assert.doesNotMatch(html, /غير مشترك/);
+  assert.match(html, /وليست مدة اشتراك أي رقم/);
   assert.match(S.build('customer/cus-demo-subscriber', d, ui()).html, /<span class="pill ok">مشترك<\/span>/);
 });
 

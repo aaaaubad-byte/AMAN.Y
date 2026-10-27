@@ -59,7 +59,7 @@
     const tag = o.to || o.act ? 'button' : 'div';
     const attrs = o.to ? `type="button" data-act="go" data-to="${esc(o.to)}"` : o.act ? `type="button" data-act="${esc(o.act)}" ${o.attrs || ''}` : '';
     const title = o.ltr ? `<span class="ltr">${esc(o.title)}</span>` : esc(o.title);
-    return `<${tag} class="row ${o.plain ? 'plain' : ''}" ${attrs} ${o.status ? `data-status="${esc(o.status)}"` : ''}>${o.icon ? tile(o.icon, o.tone) : ''}<span class="rmain"><span class="rtitle">${title}</span>${o.sub ? `<span class="rsub">${o.sub}</span>` : ''}${o.sub2 ? `<span class="rsub">${o.sub2}</span>` : ''}</span><span class="rend">${o.val ? `<span class="rval">${o.val}</span>` : ''}${o.pill || ''}${o.to || o.act ? ico('chev', 'chev') : ''}</span></${tag}>`;
+    return `<${tag} class="row ${o.plain ? 'plain' : ''} ${o.cls || ''}" ${attrs} ${o.status ? `data-status="${esc(o.status)}"` : ''}>${o.icon ? tile(o.icon, o.tone) : ''}<span class="rmain"><span class="rtitle">${title}</span>${o.sub ? `<span class="rsub">${o.sub}</span>` : ''}${o.sub2 ? `<span class="rsub">${o.sub2}</span>` : ''}${o.badges ? `<span class="rbadges">${o.badges}</span>` : ''}</span><span class="rend">${o.val ? `<span class="rval">${o.val}</span>` : ''}${o.pill || ''}${o.to || o.act ? ico('chev', 'chev') : ''}</span></${tag}>`;
   }
   const card = rows => `<div class="card">${rows.join('')}</div>`;
   const kv = rows => `<div class="kv">${rows.map(([k, v, s]) => `<div><span>${esc(k)}</span><b class="${s ? 'strong' : ''}">${v}</b></div>`).join('')}</div>`;

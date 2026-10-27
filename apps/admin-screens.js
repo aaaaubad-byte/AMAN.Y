@@ -88,7 +88,7 @@ ${pend ? `<div style="margin-top:12px">${K.callout('info', 'ما الذي يحد
 ${dupBlock(d, r)}${K.section('بيانات الطلب')}${K.kv([['العميل', c ? E(c.name) : '—'], ['الباقة المحفوظة', `${E(pk.name || '—')} · ${N(pk.points)} نقطة`], ['القيمة المالية', YER(pk.price)], ['الحالة', M.status(r.status), true], ['تاريخ الإنشاء', E(DT(r.createdAt))], ['تاريخ المراجعة', E(DT(r.reviewedAt))]])}
 ${K.section('بيانات الدفع (لقطة وقت الطلب)')}${K.kv([['وسيلة الدفع', E(pm.name || '—')], ['تعليمات الدفع', E(pm.instructions || '—')], ['مرجع الإثبات', ltr(r.paymentReference || '—') + (r.paymentReference ? K.copyBtn(r.paymentReference, 'المرجع') : '')], ['رقم الطلب', ltr(r.id) + K.copyBtn(r.id, 'رقم الطلب')]])}
 ${notesSection(d, 'request', r.id)}${r.reviewNote ? K.section('ملاحظة المراجعة') + `<div class="card"><p class="note in-card" style="color:var(--ink)">${E(r.reviewNote)}</p></div>` : ''}
-${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `${D.isSubscriber(d, c.id) ? 'مشترك' : 'غير مشترك'} · رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
+${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `${M.kindLabel(M.customerKind(d, c))} · رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
     return { chrome: 'focus', title: 'طلب شراء نقاط', sub: DY(r.createdAt), html, bar: pend ? `<div class="actionbar two">${K.btn('اعتماد الطلب', 'review-open', 'primary', `data-id="${E(r.id)}" data-decision="approved"`)}${K.btn('رفض الطلب', 'review-open', '', `data-id="${E(r.id)}" data-decision="rejected"`)}</div>` : '' };
   }
 
@@ -139,37 +139,77 @@ ${t.financeEntryId && d.financeEntries.some(x => x.id === t.financeEntryId) ? K.
   }
 
   /* ------------------------------------------------------------------ */
+  const tagChips = tags => (tags || []).map(t => `<span class="tagchip">${E(t)}</span>`).join('');
+  const badgePills = list => list.map(b => K.pill(b.label, b.tone)).join('');
+  // مرشح قائمة العملاء: حالة الحساب (st:)، تصنيف (cls:)، أو وسم (tag:)
+  const customerFilter = (d, c, f) => {
+    if (!f || f === 'all') return true;
+    if (f.startsWith('st:')) return (c.status || 'active') === f.slice(3);
+    if (f === 'cls:new') return M.isNewCustomer(d, c);
+    if (f === 'cls:premium') return M.isPremiumCustomer(d, c);
+    if (f.startsWith('tag:')) return M.hasTag(c, f.slice(4));
+    return true;
+  };
   function customers(d, a, ui) {
     const tab = ['all', 'subscribers', 'users'].includes(a) ? a : 'all';
-    const sub = c => D.isSubscriber(d, c.id);
-    const inTab = c => tab === 'all' || (tab === 'subscribers' ? sub(c) : !sub(c));
+    const kind = c => M.customerKind(d, c);
+    const inTab = c => tab === 'all' || (tab === 'subscribers' ? kind(c) === 'subscriber' : kind(c) === 'user');
+    const allTags = [...new Set(d.customers.flatMap(c => c.tags || []))].sort((x, y) => x.localeCompare(y, 'ar'));
+    const opts = [['all', 'كل الحالات والوسوم'], ['st:active', 'فعال'], ['st:suspended', 'موقوف'], ['st:blocked', 'محظور'], ['cls:new', 'جديد'], ['cls:premium', 'مميز'], ...allTags.map(t => ['tag:' + t, 'وسم: ' + t])];
+    const filtered = () => d.customers.filter(inTab).filter(c => customerFilter(d, c, ui.filter)).filter(c => match(ui.q, c.name, c.email, c.accountId, (c.tags || []).join(' ')));
+    const selecting = !!ui.selecting, sel = new Set(ui.sel || []);
     const list = () => {
-      const rows = d.customers.filter(inTab).filter(c => match(ui.q, c.name, c.email, c.accountId));
-      if (!rows.length) return emptyQ(!!ui.q, 'لا توجد نتائج مطابقة.', 'لا توجد حسابات في هذه القائمة.', 'users');
-      return paged(rows, ui, rows => K.card(rows.map(c => K.row({ icon: 'user', tone: sub(c) ? 'dark' : '', title: c.name, sub: E(c.email), sub2: `${N(D.balance(c.id, d))} نقطة · ${N(D.customerNumbers(c.id, d).length)} رقم`, pill: K.pill(sub(c) ? 'مشترك' : 'غير مشترك', sub(c) ? 'ok' : ''), to: 'customer/' + c.id }))));
+      const rows = filtered();
+      if (!rows.length) return emptyQ(!!ui.q || ui.filter !== 'all', 'لا توجد نتائج مطابقة.', 'لا توجد حسابات في هذه القائمة.', 'users');
+      return paged(rows, ui, rows => K.card(rows.map(c => {
+        const bs = M.customerBadges(d, c), first = bs[0];
+        const base = { tone: first.key === 'blocked' ? 'bad' : first.key === 'suspended' ? 'warn' : first.key === 'subscriber' ? 'dark' : '', title: c.name, sub: E(c.email), sub2: `${N(D.balance(c.id, d))} نقطة · ${N(D.customerNumbers(c.id, d).length)} رقم`, badges: badgePills(bs.slice(1)) + tagChips(c.tags), pill: K.pill(first.label, first.tone) };
+        if (!selecting) return K.row({ ...base, icon: 'user', to: 'customer/' + c.id });
+        const on = sel.has(c.id);
+        return K.row({ ...base, icon: on ? 'check' : 'user', cls: on ? 'sel' : '', act: c.status === 'deleted' ? '' : 'cust-toggle', attrs: `data-id="${E(c.id)}" aria-pressed="${on}"` });
+      })));
     };
-    return { tab: 'customers', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">العملاء</h1><p class="lede">حسابات العملاء ورصيد نقاطهم.</p>
-${K.tabs([['all', 'الكل', d.customers.length], ['subscribers', 'المشتركون', d.customers.filter(sub).length], ['users', 'غير مشتركين', d.customers.filter(c => !sub(c)).length]], tab, 'customers')}
-${K.toolbar('ابحث بالاسم أو البريد أو المعرّف', ui.q)}<div id="listbody">${list()}</div>` };
+    const dis = sel.size ? '' : 'disabled';
+    const bar = selecting ? `<div class="actionbar selbar"><div class="selcount" role="status">${N(sel.size)} محدد</div><div class="selrow">${K.btn('إضافة وسم', 'cust-tag-open', 'small', `data-mode="add" ${dis}`)}${K.btn('إزالة وسم', 'cust-tag-open', 'small', `data-mode="remove" ${dis}`)}${K.btn('نسخ البيانات', 'cust-copy-selected', 'small', dis)}</div><div class="selrow">${K.btn('تحديد الكل', 'cust-select-all', 'small')}${K.btn('إنهاء التحديد', 'cust-select-toggle', 'small')}</div></div>` : '';
+    return { tab: 'customers', chrome: 'tabs', hideTabs: selecting, list, bar, ids: () => filtered().filter(c => c.status !== 'deleted').map(c => c.id), html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('cust-select-toggle', 'check', selecting ? 'إنهاء التحديد' : 'تحديد عملاء')}${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">العملاء</h1><p class="lede">حسابات العملاء ورصيد نقاطهم ووسومهم.</p>
+${selecting ? K.note('اضغط على العملاء لتحديدهم. الإجراءات الجماعية آمنة فقط: وسوم ونسخ بيانات؛ لا حظر ولا عمليات مالية جماعية. يبقى التحديد عند البحث والتصفية.') : ''}
+${K.tabs([['all', 'الكل', d.customers.length], ['subscribers', 'المشتركون', d.customers.filter(c => kind(c) === 'subscriber').length], ['users', 'المستخدمون', d.customers.filter(c => kind(c) === 'user').length]], tab, 'customers')}
+${K.toolbar('ابحث بالاسم أو البريد أو المعرّف أو الوسم', ui.q, opts, ui.filter)}<div id="listbody">${list()}</div>` };
   }
 
-  function customer(d, id, a) {
+  function customer(d, id, a, ui) {
     const c = M.customer(d, id);
     if (!c) return missing('العميل غير موجود.');
-    const tab = ['numbers', 'requests', 'subs', 'ops'].includes(a) ? a : 'numbers';
+    const want = a === 'ops' ? 'timeline' : a, tab = ['numbers', 'requests', 'subs', 'timeline'].includes(want) ? want : 'numbers';
     const ns = D.customerNumbers(id, d), rs = d.purchaseRequests.filter(r => r.customerId === id).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt)), subs = d.subscriptions.filter(s => s.customerId === id).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
-    const ops = d.operations.filter(o => o.actorId === id || o.entityId === id).slice().reverse().slice(0, 10), isSub = D.isSubscriber(d, id);
+    const isSub = M.customerKind(d, c) === 'subscriber', badges = M.customerBadges(d, c), tl = tab === 'timeline' ? M.customerTimeline(d, id) : [];
     let body;
     if (tab === 'numbers') body = ns.length ? K.card(ns.map(n => { const s = D.activeSubscription(d, n.id), co = M.company(d, n.companyId); return K.row({ icon: 'phone', title: n.number, ltr: true, sub: E(co?.name || '—'), sub2: s ? `ينتهي ${E(DY(s.endsAt))}` : 'لا يوجد اشتراك فعال', pill: K.pill(s ? M.status(s.status) : 'بلا اشتراك', s ? 'ok' : ''), to: 'number/' + n.id }); })) : K.empty('لا توجد أرقام مرتبطة بالحساب.', 'phone');
     else if (tab === 'requests') body = rs.length ? K.card(rs.map(r => K.row({ icon: 'receipt', tone: r.status === 'approved' ? 'ok' : r.status === 'pending' ? 'warn' : 'bad', title: r.packageSnapshot?.name || 'باقة قديمة', sub: `${N(r.packageSnapshot?.points)} نقطة · ${YER(r.packageSnapshot?.price)}`, sub2: `المرجع ${E(r.paymentReference || '—')} · ${E(DT(r.createdAt))}`, pill: K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }))) : K.empty('لا توجد طلبات نقاط.', 'receipt');
     else if (tab === 'subs') body = subs.length ? K.card(subs.map(s => { const n = M.number(d, s.numberId), co = M.company(d, s.companyId || n?.companyId); return K.row({ icon: 'shield', title: n?.number || '—', ltr: true, sub: `${E(co?.name || '—')} · ${E(DY(s.startsAt))} — ${E(DY(s.endsAt))}`, sub2: `${N(s.pointsCost)} نقطة · ${N(s.rateSnapshot)} نقطة/يوم`, pill: K.pill(M.status(s.status), M.tone(s.status)), to: n ? 'number/' + n.id : '' }); })) : K.empty('لا توجد سجلات اشتراك لهذا الحساب.', 'shield');
-    else body = ops.length ? K.card(ops.map(o => K.row({ icon: 'audit', title: o.summary || o.type || 'عملية', sub: `${E(o.type || '—')} · ${E(DT(o.createdAt))}` }))) : K.empty('لا توجد عمليات مرتبطة مباشرة.', 'audit');
-    const html = `<div class="hero"><div class="hero-top">${K.tile(isSub ? 'shield' : 'user')}<div><h2>${E(c.name)}</h2><p class="ltr">${E(c.email)}</p></div></div><small>رصيد نقاط أمان</small><div class="big">${N(D.balance(id, d))}<em>نقطة</em></div><span class="pill ${isSub ? 'ok' : ''}">${isSub ? 'مشترك' : 'حساب غير مشترك'}</span></div>
-<p class="note">الرصيد مشتق من دفتر النقاط. صفة «مشترك» تثبت باعتماد أول طلب شراء نقاط ولا تعني اشتراك أي رقم؛ مدة اشتراك كل رقم في تبويب الأرقام، والمبالغ بالريال في السجل المالي العام.</p>
-${K.section('بيانات الحساب')}${K.kv([['الاسم', E(c.name)], ['البريد الإلكتروني', ltr(c.email)], ['معرّف الحساب', ltr(c.accountId || c.id)], ['الصفة', isSub ? 'مشترك' : 'غير مشترك']])}
+    else body = tl.length ? K.card(tl.slice(0, 100).map(e => K.row({ icon: e.icon, tone: e.tone, title: e.title, sub: e.sub ? E(e.sub) : '', sub2: E(DT(e.at)), plain: true }))) + (tl.length > 100 ? K.note(`عُرض أحدث 100 حدث من ${N(tl.length)}.`) : '') : K.empty('لا توجد أحداث لهذا الحساب بعد.', 'audit');
+    const restr = M.restrictionList(c, D), limited = c.status === 'suspended' || c.status === 'blocked';
+    const statusBlock = limited ? K.callout('lock', c.status === 'blocked' ? 'الحساب محظور' : 'الحساب موقوف', `<small style="display:block;line-height:1.9;margin-top:4px">${c.statusReason ? 'السبب: ' + E(c.statusReason) + '<br>' : ''}الأثر: ${E(restr.join('، ') || '—')}.${c.statusChangedAt ? '<br>منذ ' + E(DT(c.statusChangedAt)) : ''}<br>لا يرى العميل السبب؛ تظهر له رسالة عامة عند الدخول أو العملية الممنوعة.</small>`) : '';
+    const tagsHtml = (c.tags || []).map(t => `<span class="tagchip">${E(t)}<button type="button" class="tagx" data-act="cust-tag-remove" data-id="${E(id)}" data-tag="${E(t)}" aria-label="إزالة الوسم ${E(t)}">${K.ico('close')}</button></span>`).join('') || '<span class="rsub">لا توجد وسوم.</span>';
+    const html = `<div class="hero"><div class="hero-top">${K.tile(isSub ? 'shield' : 'user')}<div><h2>${E(c.name)}</h2><p class="ltr">${E(c.email)}</p></div></div><small>رصيد نقاط أمان</small><div class="big">${N(D.balance(id, d))}<em>نقطة</em></div><div class="hero-badges">${badgePills(badges)}</div></div>
+${statusBlock ? `<div style="margin-top:12px">${statusBlock}</div>` : ''}
+<p class="note">الرصيد مشتق من دفتر النقاط. «مشترك» = اعتُمد له طلب شراء نقاط واحد على الأقل، وغير ذلك «مستخدم»؛ وليست مدة اشتراك أي رقم (تجدها في تبويب الأرقام). المبالغ بالريال في السجل المالي العام.</p>
+${K.section('بيانات الحساب')}${K.kv([['الاسم', E(c.name)], ['البريد الإلكتروني', ltr(c.email)], ['معرّف الحساب', ltr(c.accountId || c.id)], ['الصفة', M.kindLabel(M.customerKind(d, c))], ['الحالة', E(M.CUSTOMER_STATUS[c.status || 'active'] || c.status)]])}
+${K.section('الوسوم')}<div class="tagrow">${tagsHtml}</div>${c.status === 'deleted' ? '' : `<div style="margin-top:10px">${K.btn('إضافة وسم', 'cust-tag-open', '', `data-mode="add" data-ids="${E(id)}"`, 'plus')}</div>`}
+${K.section('إجراءات')}<div class="btn-stack">${c.status === 'deleted' ? '' : K.btn('تغيير حالة الحساب (إيقاف / حظر)', 'cust-status-open', '', `data-id="${E(id)}"`, 'lock')}${K.btn('نسخ بيانات العميل', 'copy', '', `data-copy="${E(M.customerCopyText(d, c, D))}" data-label="بيانات العميل"`, 'doc')}</div>
 ${notesSection(d, 'customer', id)}
-${K.tabs([['numbers', 'الأرقام', ns.length], ['requests', 'الطلبات', rs.length], ['subs', 'الاشتراكات', subs.length], ['ops', 'العمليات']], tab, 'customer')}${body}`;
+${K.tabs([['numbers', 'الأرقام', ns.length], ['requests', 'الطلبات', rs.length], ['subs', 'الاشتراكات', subs.length], ['timeline', 'السجل الزمني']], tab, 'customer')}${body}`;
     return { chrome: 'focus', title: 'تفاصيل العميل', sub: c.name, html, end: K.tileAction('add-number-open', 'plus', 'إضافة رقم للعميل', `data-customer="${E(c.id)}"`) };
+  }
+
+  // قواعد «جديد» و«مميز»: إعدادات إدارية بلا قيم تجارية افتراضية؛ الفارغ = معطّل
+  function customerClasses(d) {
+    const cc = d.settings?.customerClasses || {}, live = d.customers.filter(c => c.status !== 'deleted');
+    const extra = `${K.section('الوضع الحالي')}${K.kv([['عملاء بشارة «جديد»', N(live.filter(c => M.isNewCustomer(d, c)).length)], ['عملاء بشارة «مميز»', N(live.filter(c => M.isPremiumCustomer(d, c)).length)], ['مشتركون', N(live.filter(c => M.customerKind(d, c) === 'subscriber').length)], ['مستخدمون', N(live.filter(c => M.customerKind(d, c) === 'user').length)]])}
+${K.note('«مشترك»: اعتُمد له طلب شراء نقاط واحد على الأقل، و«مستخدم»: غير ذلك. «محظور» و«موقوف» تأتي من حالة الحساب. «مميز» يُمنح أيضًا بوسم «مميز» يدويًا. كل تغيير في هذه القواعد يُسجَّل في سجل التدقيق بالقيم قبل وبعد.')}`;
+    return formView('تصنيفات العملاء', 'قواعد «جديد» و«مميز»', 'customer-classes-form', `<p class="note">اترك أي حقل فارغًا لتعطيل شرطه؛ لا توجد قيم افتراضية.</p>${K.fields(
+      K.field({ name: 'newWithinDays', label: 'عميل «جديد» خلال كم يومًا من التسجيل؟', type: 'number', min: 1, inputmode: 'numeric', value: cc.newWithinDays ?? '', help: 'مثال: 14. الفارغ يعطّل شارة «جديد».' }) +
+      K.field({ name: 'premiumMinApprovedOrders', label: 'الحد الأدنى للطلبات المعتمدة لشارة «مميز»', type: 'number', min: 1, inputmode: 'numeric', value: cc.premiumMinApprovedOrders ?? '', help: 'الفارغ يعطّل الحد؛ يبقى الوسم اليدوي «مميز» يمنح الشارة.' }))}`, 'حفظ القواعد', extra);
   }
 
   /* ------------------------------------------------------------------ */
@@ -249,6 +289,7 @@ ${g('الإعداد', [
       { icon: 'building', title: 'الشركات', sub: `${N(d.companies.length)} شركة · بادئات وأطوال أرقام`, to: 'companies' },
       { icon: 'sliders', title: 'إعدادات المهام الدورية', sub: 'ثمانية خيارات لكل شركة', to: 'task-settings' },
       { icon: 'box', title: 'باقات النقاط', sub: `${N(d.packages.length)} باقة · سعر بالريال`, to: 'packages' },
+      { icon: 'users', title: 'تصنيفات العملاء', sub: 'قواعد «جديد» و«مميز» والوسوم', to: 'customer-classes' },
       { icon: 'shield', title: 'باقات الحماية', sub: `${N((d.protectionPackages || []).length)} باقة · مدة وتكلفة بالنقاط`, to: 'protection' },
       { icon: 'card', title: 'وسائل الدفع', sub: `${N(d.paymentMethods.length)} وسيلة`, to: 'payments' }])}
 ${g('التواصل', [
@@ -455,7 +496,8 @@ ${K.section('البيانات')}${K.card([K.row({ icon: 'download', title: 'تن
       case 'task': return task(d, a);
       case 'unrecorded': return unrecorded(d, ui);
       case 'customers': return customers(d, a, ui);
-      case 'customer': return customer(d, a, b);
+      case 'customer': return customer(d, a, b, ui);
+      case 'customer-classes': return customerClasses(d);
       case 'numbers': return numbers(d, a, ui);
       case 'number': return numberDetail(d, a);
       case 'finance': return financeScreen(d, a);

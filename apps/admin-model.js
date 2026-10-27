@@ -125,6 +125,7 @@
       const det = o.details || {};
       if (o.type === 'customer_status_changed' && o.entityId === id) push(o.createdAt, 'status', 'lock', `تغيّر الحالة: ${CUSTOMER_STATUS[det.from] || det.from || '—'} ← ${CUSTOMER_STATUS[det.to] || det.to || '—'}`, [det.reason, (det.to === 'suspended' ? Object.keys(RESTRICTION_LABEL).filter(k => det.restrictions?.[k]).map(k => RESTRICTION_LABEL[k]).join('، ') : '')].filter(Boolean).join(' · '), det.to === 'active' ? 'ok' : 'bad');
       else if (['customer_tags_added', 'customer_tag_removed'].includes(o.type) && (det.customerIds || []).includes(id)) push(o.createdAt, 'tag', 'text', `${o.type === 'customer_tags_added' ? 'إضافة' : 'إزالة'} وسم «${det.tag}»`);
+      else if (o.type === 'customer_tags_restored' && (det.customerIds || []).includes(id)) push(o.createdAt, 'tag', 'text', 'استعادة الوسوم بعد تراجع');
       else if (o.type === 'password_changed' && o.entityId === id) push(o.createdAt, 'password', 'lock', 'تغيير كلمة المرور');
       else if (o.type === 'account_deleted' && o.entityId === id) push(o.createdAt, 'deleted', 'close', 'حذف الحساب وإخفاء الهوية', '', 'bad');
     }

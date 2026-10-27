@@ -9,7 +9,7 @@
   const TAB_OF = { home: 'home', requests: 'requests', request: 'requests', tasks: 'tasks', task: 'tasks', customers: 'customers', customer: 'customers' };
 
   const ui = {
-    logged: sessionStorage.getItem('aman.admin') === '1', route: 'home', q: '', filter: 'all', view: null, sheet: false, busy: false, scroll: {},
+    logged: sessionStorage.getItem('aman.admin') === '1', route: 'home', q: '', filter: 'all', view: null, sheet: false, busy: false, scroll: {}, selecting: false, sel: [],
     demo: new URLSearchParams(location.search).get('demo') === '1'
   };
 
@@ -37,7 +37,7 @@
   // رابط فيه % مشوّه لا يجوز أن يكسر التطبيق: يُعامَل كمسار غير معروف فيعود إلى الرئيسية
   const hashRoute = () => { try { return decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { return 'home'; } };
   const histState = () => (history.state && history.state.amanAdmin ? history.state : null);
-  const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+)$/.test(r);
+  const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+|customer-classes)$/.test(r);
   function parentOf(r) {
     const [n, a, b] = r.split('/');
     if (n === 'request') return 'requests/pending';
@@ -50,7 +50,7 @@
     if (n === 'protection' && a) return b === 'edit' ? `protection/${a}` : 'protection';
     if (n === 'payment') return b === 'edit' ? `payment/${a}` : 'payments';
     if (n === 'content' && a) return 'content';
-    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance', 'unrecorded', 'templates'].includes(n)) return 'more';
+    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance', 'unrecorded', 'templates', 'customer-classes'].includes(n)) return 'more';
     return 'home';
   }
   function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
@@ -62,6 +62,7 @@
     (replace ? history.replaceState : history.pushState).call(history, st, '', '#/' + route);
     if (ui.route.split('/')[0] !== route.split('/')[0]) { if (!keepQuery) ui.q = ''; }
     ui.filter = 'all'; ui.limit = 0;
+    if (route.split('/')[0] !== 'customers') { ui.selecting = false; ui.sel = []; }
     ui.route = route;
     render({ top: true });
   }
@@ -78,7 +79,7 @@
       return;
     }
     const r = e.state?.amanAdmin ? e.state.route : hashRoute();
-    if (r !== ui.route) { ui.q = ''; ui.filter = 'all'; ui.limit = 0; }
+    if (r !== ui.route) { ui.q = ''; ui.filter = 'all'; ui.limit = 0; if (r.split('/')[0] !== 'customers') { ui.selecting = false; ui.sel = []; } }
     ui.route = r;
     render({ restore: true });
   });
@@ -109,7 +110,7 @@
     barEl.innerHTML = v.bar || '';
     const active = v.tab || TAB_OF[ui.route.split('/')[0]] || 'more';
     const pend = d.purchaseRequests.filter(r => r.status === 'pending').length;
-    tabbar.hidden = v.chrome !== 'tabs';
+    tabbar.hidden = v.chrome !== 'tabs' || !!v.hideTabs;
     tabbar.innerHTML = TABS.map(([k, label, icon]) => `<button type="button" class="tab" data-act="go" data-to="${k === 'requests' ? 'requests/pending' : k === 'tasks' ? 'tasks/available' : k === 'customers' ? 'customers/all' : k}" ${k === active ? 'aria-current="page"' : ''}>${K.ico(icon)}<span>${label}</span>${k === 'requests' && pend ? `<i class="badge" aria-label="${pend} طلب معلق">${N(pend)}</i>` : ''}</button>`).join('');
     document.title = (v.title ? v.title + ' | ' : '') + 'أمان | الإدارة';
     if (opt.top) screen.scrollTop = 0; else if (opt.restore) screen.scrollTop = ui.scroll[ui.route] || 0; else screen.scrollTop = keepTop;
@@ -237,6 +238,50 @@
   }
 
   /* ===================== معالجة النقر ===================== */
+
+  /* ===================== العملاء: الحالة والوسوم (U10) ===================== */
+  const STATUS_IMPACT = {
+    active: 'يعود الحساب فعالًا بلا أي قيود، ويبقى التغيير في السجل الزمني.',
+    suspended: 'يُطبَّق الأثر المحدد فقط؛ ما لم تحدده يبقى متاحًا للعميل.',
+    blocked: 'يمنع الدخول وشراء النقاط وخدمات الحماية معًا. لا يُحذف شيء: الرصيد والسجلات والاشتراكات السارية ومهامها تبقى كما هي.'
+  };
+  function syncStatusForm() {
+    const f = $('#sheet-form'); if (!f || f.dataset.form !== 'customer-status') return;
+    const st = f.elements.status.value;
+    $('#restr-box')?.classList.toggle('hidden', st !== 'suspended');
+    f.elements.reason.required = st !== 'active';
+    const impact = $('#status-impact'); if (impact) impact.textContent = STATUS_IMPACT[st] || '';
+  }
+  function statusSheet(id) {
+    const d = D.read(), c = M.customer(d, id);
+    if (!c || c.status === 'deleted') return toast('الحساب غير موجود أو محذوف.', true);
+    const cur = c.status || 'active', r = D.restrictionsOf(c);
+    const toggles = [['login', 'منع تسجيل الدخول'], ['purchase', 'منع شراء النقاط'], ['protection', 'منع خدمات الحماية (الاشتراك والتمديد والتجديد)']].map(([k, l]) => K.toggle('r_' + k, l, cur === 'suspended' && r[k])).join('');
+    openSheet('حالة الحساب',
+      `<p class="sheet-text">${E(c.name)} — الحالة الحالية: ${strong(E(M.CUSTOMER_STATUS[cur] || cur))}. لا يُرسَل إشعار للعميل؛ تظهر له رسالة عامة عند الدخول أو العملية الممنوعة ولا يرى السبب.</p>
+<form id="sheet-form" data-form="customer-status"><input type="hidden" name="id" value="${E(id)}">${K.fields(
+        K.field({ name: 'status', label: 'الحالة الجديدة', type: 'select', value: cur, options: [['active', 'فعال'], ['suspended', 'موقوف'], ['blocked', 'محظور']] }) +
+        `<div id="restr-box" class="hidden"><div class="field"><label>الأثر (اختر واحدًا على الأقل)</label>${toggles}</div></div>` +
+        K.field({ name: 'reason', label: 'السبب (داخلي، إلزامي عند الإيقاف أو الحظر)', type: 'textarea', rows: 3, value: c.statusReason || '' }))}<p class="note" id="status-impact"></p>${errBox}</form>`,
+      formFoot('حفظ الحالة'));
+    syncStatusForm();
+  }
+  const tagSnapshot = ids => { const d = D.read(); return ids.map(id => [id, [...(M.customer(d, id)?.tags || [])]]); };
+  const restoreTags = prev => D.transact(ADMIN, 'customer_tags_restored', d => { for (const [id, tags] of prev) { const c = d.customers.find(x => x.id === id); if (c) c.tags = tags; } return { entityType: 'customer_tags', entityId: null, summary: `استعادة وسوم ${prev.length} عميلًا`, details: { customerIds: prev.map(x => x[0]) } }; });
+  function tagSheet(mode, ids) {
+    const d = D.read(), list = [...new Set(ids)].filter(x => M.customer(d, x) && M.customer(d, x).status !== 'deleted'), add = mode === 'add';
+    if (!list.length) return toast('حدد عميلًا واحدًا على الأقل.', true);
+    const have = [...new Set(list.flatMap(id => M.customer(d, id).tags || []))].sort((x, y) => x.localeCompare(y, 'ar'));
+    const known = [...new Set(d.customers.flatMap(c => c.tags || []))].sort((x, y) => x.localeCompare(y, 'ar'));
+    if (!add && !have.length) return toast('لا توجد وسوم على العملاء المحددين.', true);
+    const chips = add && known.length ? `<div class="tpl-chips" role="group" aria-label="وسوم موجودة">${known.map(t => `<button type="button" class="tpl-chip" data-act="tag-pick" data-text="${E(t)}">${E(t)}</button>`).join('')}</div>` : '';
+    openSheet(add ? 'إضافة وسم' : 'إزالة وسم',
+      `<p class="sheet-text">سيُطبَّق على ${strong(N(list.length) + ' عميلًا')}. العملية ذرّية: إن فشلت لا يُحفظ أي تغيير، ويمكنك التراجع بعدها.</p>
+<form id="sheet-form" data-form="bulk-tag"><input type="hidden" name="mode" value="${add ? 'add' : 'remove'}"><input type="hidden" name="ids" value="${E(list.join(','))}">${K.fields(add
+        ? K.field({ name: 'tag', label: 'اسم الوسم', required: true, help: 'حتى 24 حرفًا. الوسم «مميز» يمنح شارة «مميز».' }) + chips
+        : K.field({ name: 'tag', label: 'الوسم المراد إزالته', type: 'select', value: have[0], options: have.map(t => [t, t]) }))}${errBox}</form>`,
+      formFoot(add ? 'إضافة الوسم' : 'إزالة الوسم'));
+  }
   const withTab = (route, tab) => { const p = route.split('/'); return p[0] === 'customer' ? `customer/${p[1]}/${tab}` : `${p[0]}/${tab}`; };
   document.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]');
@@ -272,6 +317,21 @@
           }); return;
         }
         case 'tpl-apply': { const t = $('#reviewNote'); if (t) { t.value = b.dataset.text || ''; t.focus(); } return; }
+        case 'cust-select-toggle': ui.selecting = !ui.selecting; ui.sel = []; render({}); return;
+        case 'cust-toggle': { const i = ui.sel.indexOf(id); if (i < 0) ui.sel.push(id); else ui.sel.splice(i, 1); render({}); return; }
+        case 'cust-select-all': ui.sel = [...new Set([...ui.sel, ...(ui.view?.ids?.() || [])])]; render({}); return;
+        case 'cust-copy-selected': {
+          if (!ui.sel.length) { toast('حدد عميلًا واحدًا على الأقل.', true); return; }
+          const d = D.read(), text = ui.sel.map(x => M.customer(d, x)).filter(Boolean).map(c => M.customerCopyText(d, c, D)).join('\n\n---\n\n');
+          await copyText(text, `بيانات ${N(ui.sel.length)} عميلًا`); return;
+        }
+        case 'cust-status-open': statusSheet(id); return;
+        case 'cust-tag-open': tagSheet(b.dataset.mode, b.dataset.ids ? b.dataset.ids.split(',') : ui.sel); return;
+        case 'tag-pick': { const t = $('#f_tag'); if (t) { t.value = b.dataset.text || ''; t.focus(); } return; }
+        case 'cust-tag-remove': await run(async () => {
+          const tag = b.dataset.tag, prev = tagSnapshot([id]); await D.removeCustomerTag(ADMIN, [id], tag); render();
+          toast(`أُزيل الوسم «${tag}».`, false, { fn: () => restoreTags(prev) });
+        }); return;
         case 'note-add':
           openSheet('ملاحظة داخلية', `<p class="sheet-text">لا تظهر للعميل أبدًا.</p><div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`) + K.btn('إلغاء', 'sheet-close')); setTimeout(() => $('#noteText')?.focus(), 50); return;
         case 'note-save': await run(async () => { await D.addInternalNote(ADMIN, b.dataset.type, id, $('#noteText')?.value || ''); closeSheet(); render(); toast('حُفظت الملاحظة الداخلية.'); }, 'note'); return;
@@ -352,6 +412,19 @@
         case 'finance-reverse': await D.reverseFinancialEntry(ADMIN, fd.get('entryId'), fd.get('reason')); closeSheet(); toast('أُنشئ القيد العكسي مع بقاء القيد الأصلي.'); render(); return;
         case 'admin-number': await D.addNumber(fd.get('customerId'), fd.get('number')); closeSheet(); toast('أُضيف الرقم إلى حساب العميل دون تفعيل اشتراك أو خصم نقاط.'); render(); return;
         case 'notice': await D.sendLocalNotice(ADMIN, fd.get('title'), fd.get('body'), fd.get('audience'), fd.get('customerId')); closeSheet(); toast('أُنشئ الإشعار محليًا.'); render(); return;
+        case 'customer-status': {
+          const st = fd.get('status');
+          await D.setCustomerStatus(ADMIN, fd.get('id'), { status: st, reason: fd.get('reason'), restrictions: { login: fd.has('r_login'), purchase: fd.has('r_purchase'), protection: fd.has('r_protection') } });
+          closeSheet(); render();
+          toast(st === 'active' ? 'عاد الحساب فعالًا بلا قيود.' : st === 'blocked' ? 'حُظر الحساب: الدخول والشراء والحماية.' : 'أُوقف الحساب بالأثر المحدد.'); return;
+        }
+        case 'bulk-tag': {
+          const ids = String(fd.get('ids')).split(',').filter(Boolean), tag = String(fd.get('tag') || '').trim(), add = fd.get('mode') === 'add', prev = tagSnapshot(ids);
+          if (add) await D.addCustomerTags(ADMIN, ids, tag); else await D.removeCustomerTag(ADMIN, ids, tag);
+          closeSheet(); render();
+          toast(`${add ? 'أُضيف' : 'أُزيل'} الوسم «${tag}» (${N(ids.length)} عميلًا).`, false, { fn: () => restoreTags(prev) }); return;
+        }
+        case 'customer-classes-form': await D.saveCustomerClasses(ADMIN, { newWithinDays: fd.get('newWithinDays'), premiumMinApprovedOrders: fd.get('premiumMinApprovedOrders') }); toast('حُفظت قواعد التصنيف وسُجلت بالقيم قبل وبعد.'); back(); return;
         default: throw new Error('تعذر العثور على النموذج.');
       }
     });
@@ -362,6 +435,7 @@
   document.addEventListener('change', async e => {
     const t = e.target;
     if (t.id === 'flt') { ui.filter = t.value; ui.limit = 0; refreshList(); return; }
+    if (t.name === 'status' && t.closest('#sheet-form')) { syncStatusForm(); return; }
     if (t.name === 'audience' && t.closest('#sheet-form')) { $('#notice-customer')?.classList.toggle('hidden', t.value !== 'customer'); return; }
     if (t.id === 'adminDark' || t.dataset.setting) {
       await run(async () => {
