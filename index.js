@@ -1,3 +1,4 @@
+
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -222,14 +223,6 @@ app.get("/", (_req, res) => {
 });
 
 app.all("/mcp", async (req, res) => {
-  // حماية نقطة MCP بسر مستقل عن توكن GitHub.
-  const secret = process.env.MCP_SECRET;
-  const authorization = req.get("Authorization") || "";
-
-  if (!secret || authorization !== `Bearer ${secret}`) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
   if (req.method !== "POST") {
     return res.status(405).send("Use POST for MCP requests.");
   }
