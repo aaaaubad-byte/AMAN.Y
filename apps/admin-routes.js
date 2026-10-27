@@ -1,4 +1,4 @@
-/* AMAN Admin — آباء مسارات U12/U13/U14 لزر الرجوع عند الدخول المباشر برابط (بلا سجل رجوع).
+/* AMAN Admin — آباء مسارات U12–U15 لزر الرجوع عند الدخول المباشر برابط (بلا سجل رجوع).
    admin.js يعالج الرجوع عبر history.back() متى وُجد سجل؛ هذا الملف يتدخل فقط حين لا يوجد سجل (d = 0)
    فيعيد المستخدم إلى الشاشة الأم الصحيحة بدل الرئيسية. لا يمس منطق التوجيه في admin.js. */
 (function (root) {
@@ -11,6 +11,7 @@
     if (n === 'support') return 'more';
     if (n === 'support-ticket') return 'support';
     if (n === 'promotions' || n === 'coupons') return a ? n : 'more';
+    if (n === 'autorenew') return 'more';
     return null;
   };
   const route = () => { try { return decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { return 'home'; } };
