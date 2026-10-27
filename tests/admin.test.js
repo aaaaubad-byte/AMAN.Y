@@ -21,18 +21,19 @@ function store(initial) { const map = new Map([[D.KEY, initial]]); return { getI
 const seed = () => { D.setStorageForTests(store(JSON.stringify(Fixture.seedData()))); return D.read(); };
 const ui = (o = {}) => ({ q: '', filter: 'all', demo: false, ...o });
 
-test('تصنيف المهمة: مكتملة وملغاة ومتاحة مبكرًا ومتأخرة ومستحقة وقادمة', () => {
+test('تصنيف المهمة: مكتملة وملغاة ومتاحة مبكرًا ومستحقة وقادمة (بلا حالة «متأخرة» بقرار المالك)', () => {
   const d = seed(), now = Date.now(), H = 3600000;
   const base = d.tasks.find(t => t.id === 'task-due-demo');
   const sub = d.subscriptions.find(s => s.id === base.subscriptionId);
   sub.startsAt = new Date(now - 30 * 86400000).toISOString(); sub.endsAt = new Date(now + 30 * 86400000).toISOString();
   const mk = (id, patch) => ({ ...base, id, subscriptionId: 'iso-' + id, status: 'due', ...patch });
   const put = t => { d.tasks.push(t); d.subscriptions.push({ ...sub, id: t.subscriptionId }); return t; };
-  const overdue = put(mk('t-over', { dueAt: new Date(now - 5 * H).toISOString(), visibleAt: new Date(now - 9 * H).toISOString() }));
+  const pastDue = put(mk('t-over', { dueAt: new Date(now - 5 * H).toISOString(), visibleAt: new Date(now - 9 * H).toISOString() }));
   const early = put(mk('t-early', { status: 'planned', dueAt: new Date(now + 20 * H).toISOString(), visibleAt: new Date(now - H).toISOString() }));
   const planned = put(mk('t-plan', { status: 'planned', dueAt: new Date(now + 9 * 86400000).toISOString(), visibleAt: new Date(now + 8 * 86400000).toISOString() }));
   const done = put(mk('t-done', { status: 'executed' })), canc = put(mk('t-canc', { status: 'cancelled' }));
-  assert.equal(M.taskClass(overdue, d, D), 'overdue');
+  assert.equal(M.taskClass(pastDue, d, D), 'due', 'مرور ساعات على الموعد لا يُنشئ حالة جديدة');
+  assert.equal(M.TASK_LABEL.overdue, undefined);assert.equal(M.isOverdue, undefined);
   assert.equal(M.taskClass(early, d, D), 'early');
   assert.equal(M.taskClass(planned, d, D), 'planned');
   assert.equal(M.taskClass(done, d, D), 'completed');
@@ -148,7 +149,8 @@ test('U2-ب: أخطاء الحقول بجانبها وEnter والتركيز ا�
 test('U2-ج: تحميل المزيد والسحب للتحديث والتراجع غير المالي ومسح التصفية في الإدارة (24 و39 و55 و56 و58)', () => {
   const rd = f => require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'apps', f), 'utf8');
   const js = rd('admin.js'), sc = rd('admin-screens.js');
-  assert.equal((sc.match(/return paged\(rows, ui, rows => K\.card\(rows\.map\(/g) || []).length, 6, 'القوائم الطويلة كلها مقسمة');
+  assert.equal((sc.match(/return paged\(rows, ui, rows => K\.card\(rows\.map\(/g) || []).length, 5, 'القوائم الطويلة كلها مقسمة (المهام مقسمة داخل مجموعات الشركات)');
+  assert.match(sc.split('function tasks(')[1].split('function task(')[0], /lim = ui\.limit \|\| PAGE[\s\S]*load-more/, 'قائمة المهام مقسمة داخل التجميع');
   assert.match(sc, /const PAGE = 30/);assert.match(js, /case 'load-more': ui\.limit = \(ui\.limit \|\| 30\) \+ 30/);
   assert.match(js, /if \(e\.target\.id === 'q'\) \{ ui\.q = e\.target\.value; ui\.limit = 0/, 'البحث يعيد الصفحة الأولى');
   assert.match(sc, /emptyQ = \(filtered, qText, otherText, icon\)/);assert.match(js, /case 'clear-filter'/);
@@ -194,4 +196,44 @@ test('U8: مرجع مكرر (نفس الوسيلة/وسيلة مختلفة) ور
   for (const x of D.read().messageTemplates.slice()) await D.deleteTemplate('admin', x.id);
   assert.deepEqual(D.read().messageTemplates, [], 'حذف الكل يُحترم ولا تُعاد القوالب الافتراضية');
   assert.doesNotMatch(S.build('templates', D.read(), ui()).html, /undefined|\[object/);
+});
+
+test('U9: تجميع المهام بالشركة والانتقال للتالية وتقرير غير المسجلة وبلا «متأخرة» أو تنفيذ جماعي (23 و35 و52 و92 و99)', () => {
+  const d = seed(), now = Date.now(), H = 3600000;
+  const due = d.tasks.find(t => t.id === 'task-due-demo'), fut = d.tasks.find(t => t.id === 'task-future-demo');
+  due.dueAt = new Date(now - 30 * H).toISOString(); due.visibleAt = new Date(now - 40 * H).toISOString();
+  fut.dueAt = new Date(now + 20 * H).toISOString(); fut.visibleAt = new Date(now - H).toISOString();
+  // مهمة ثانية للشركة الأولى نفسها (اشتراك مستقل) ليظهر التجميع
+  const sub2 = { ...d.subscriptions.find(s => s.id === due.subscriptionId), id: 'sub-extra' };
+  d.subscriptions.push(sub2); d.tasks.push({ ...due, id: 'task-extra', subscriptionId: 'sub-extra', dueAt: new Date(now - 2 * H).toISOString() });
+  const html = S.build('tasks/available', d, ui()).html;
+  assert.doesNotMatch(html, /متأخر|overdue/, 'لا ذكر للتأخر في المهام');
+  const co77 = d.companies.find(c => c.id === 'co-net77').name, co73 = d.companies.find(c => c.id === 'co-net73').name;
+  assert.equal((html.match(new RegExp(`<span>${co77}</span>`, 'g')) || []).length, 1, 'رأس واحد لكل شركة');
+  assert.ok(html.indexOf(co73) > -1 && html.indexOf(co77) > -1);
+  assert.ok(html.indexOf('task/task-due-demo') < html.indexOf('task/task-extra'), 'الأقدم استحقاقًا أولًا داخل الشركة');
+  // المدة محايدة نصًا فقط
+  assert.match(html, /منذ 1 يومًا|منذ 30 ساعة|منذ \d+ (ساعة|يومًا)/);
+  assert.equal(M.sinceDue(fut), '');
+  assert.equal(M.elapsedText(30 * 60000), 'منذ أقل من ساعة');
+  // التالية: بترتيب العرض نفسه، ولا تتضمن الحالية
+  const order = M.availableOrder(d, D).map(t => t.id);
+  assert.ok(order.length >= 2);
+  const next = M.nextAvailableAfter(d, D, order[0]); assert.equal(next.id, order[1]);
+  assert.notEqual(M.nextAvailableAfter(d, D, order.at(-1))?.id, order.at(-1));
+  assert.equal(M.nextAvailableAfter({ ...d, tasks: [due] }, D, due.id), null, 'لا تالية إن لم توجد غيرها');
+  // تقرير غير المسجلة: المستحقة فقط، بتنبيه أن غياب التسجيل لا يعني عدم السداد
+  const un = M.unrecordedTasks(d, D).map(t => t.id); assert.ok(un.includes('task-due-demo') && !un.includes('task-future-demo'));
+  const rep = S.build('unrecorded', d, ui()).html;
+  assert.match(rep, /لا يعني بالضرورة أن السداد لم يحدث/); assert.doesNotMatch(rep, /متأخر/); assert.match(rep, /data-to="task\/task-due-demo"/);
+  assert.match(S.build('more', d, ui()).html, /data-to="unrecorded"/);
+  assert.match(S.build('unrecorded', { ...d, tasks: [] }, ui()).html, /لا توجد مهام مرّ موعدها/);
+  // تفاصيل المهمة: نسخ الرقم وخطوات السداد الخارجي
+  const det = S.build('task/task-due-demo', d, ui()).html; assert.match(det, /data-act="copy"/); assert.match(det, /انسخ رقم الهاتف/); assert.match(det, /وسيلة السداد الخارجية/);
+  // لا تنفيذ جماعي ولا تنفيذ بلا تأكيد سداد
+  const js = fs.readFileSync(path.join(apps, 'admin.js'), 'utf8'), sc = fs.readFileSync(path.join(apps, 'admin-screens.js'), 'utf8');
+  assert.doesNotMatch(js + sc, /execute-all|executeAll|batch-execute|تنفيذ الكل|تنفيذ المحدد/);
+  assert.match(js, /id="paidConfirm"/); assert.match(js, /if \(!\$\('#paidConfirm'\)\?\.checked\)/);
+  assert.match(js, /data-next="\$\{E\(next\.id\)\}"/, 'فتح التالية لا يُنفِّذها تلقائيًا');
+  assert.equal((js.match(/D\.executeTask\(/g) || []).length, 1, 'مسار تنفيذ واحد لمهمة واحدة');
 });

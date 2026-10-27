@@ -50,7 +50,7 @@
     if (n === 'protection' && a) return b === 'edit' ? `protection/${a}` : 'protection';
     if (n === 'payment') return b === 'edit' ? `payment/${a}` : 'payments';
     if (n === 'content' && a) return 'content';
-    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance'].includes(n)) return 'more';
+    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance', 'unrecorded', 'templates'].includes(n)) return 'more';
     return 'home';
   }
   function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
@@ -199,11 +199,15 @@
 <div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (تظهر للعميل، اختياري)' : 'سبب الرفض (يظهر للعميل)'}</label>${chips}<textarea id="reviewNote" name="note" rows="3" maxlength="300" placeholder="${ok ? 'يمكنك اختيار قالب أو كتابة نص' : 'اختر قالبًا وعدّل نصه أو اكتب السبب'}"></textarea></div></div>${errBox}`,
       K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + (next ? K.btn(ok ? 'اعتماد وفتح التالي' : 'رفض وفتح التالي', 'review-confirm', '', `data-confirm data-next="${E(next)}" data-id="${E(id)}" data-decision="${decision}"`) : '') + K.btn('إلغاء', 'sheet-close'));
   }
+  // تنفيذ كل مهمة على حدة (بنود 23 و92): لا تنفيذ جماعي؛ يؤكد المدير أنه سدّد فعليًا خارج النظام ثم يسجّل التنفيذ.
   function executeSheet(id) {
-    const t = D.read().tasks.find(x => x.id === id);
+    const d = D.read(), t = d.tasks.find(x => x.id === id);
     if (!t) return toast('المهمة غير موجودة.', true);
-    openSheet(new Date(t.dueAt) > Date.now() ? 'تنفيذ المهمة مبكرًا' : 'تنفيذ المهمة', `<p class="sheet-text">سيُسجَّل مصروف المهمة ${strong(N(t.expenseAmount) + ' ر.ي')} في السجل المالي مرة واحدة، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي وفق إعدادات الشركة. لا يتغير رصيد نقاط العميل.</p>${errBox}`,
-      K.btn('تأكيد التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + K.btn('إلغاء', 'sheet-close'));
+    const next = M.nextAvailableAfter(d, D, id), n = M.number(d, t.numberId);
+    openSheet(new Date(t.dueAt) > Date.now() ? 'تسجيل تنفيذ المهمة مبكرًا' : 'تسجيل تنفيذ المهمة',
+      `<p class="sheet-text">الرقم ${n ? `<span class="ltr">${E(n.number)}</span>` : ''}. سيُسجَّل مصروف المهمة ${strong(N(t.expenseAmount) + ' ر.ي')} في السجل المالي مرة واحدة، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي وفق إعدادات الشركة. لا يتغير رصيد نقاط العميل. لا يمكن تسجيل أكثر من مهمة في العملية الواحدة.</p>
+<div class="fields"><label class="toggle"><span>نفّذت السداد فعليًا عبر وسيلة الدفع الخارجية<small>التسجيل يوثّق ما تم؛ لا يُنفَّذ السداد من هنا.</small></span><input class="switch" type="checkbox" role="switch" id="paidConfirm"></label></div>${errBox}`,
+      K.btn('تسجيل التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + (next ? K.btn('تسجيل التنفيذ وفتح التالية', 'execute-confirm', '', `data-confirm data-next="${E(next.id)}" data-id="${E(id)}"`) : '') + K.btn('إلغاء', 'sheet-close'));
   }
   function reschedSheet(id) {
     const t = D.read().tasks.find(x => x.id === id);
@@ -279,7 +283,15 @@
           const prev = (D.read().messageTemplates || []).find(x => x.id === id); await D.deleteTemplate(ADMIN, id); back(); 
           toast('حُذف القالب.', false, { fn: () => D.transact(ADMIN, 'template_restored', d => { if (prev && !d.messageTemplates.some(x => x.id === prev.id)) d.messageTemplates.push(prev); return { entityType: 'template', entityId: id, summary: 'استعادة قالب' }; }) });
         }); return;
-        case 'execute-confirm': await run(async () => { await D.executeTask(ADMIN, id); closeSheet(); toast('نُفذت المهمة وسُجل مصروفها ومهمتها التالية وفق الخطة.'); render(); }); return;
+        case 'execute-confirm': {
+          if (!$('#paidConfirm')?.checked) { showError('أكّد أولًا أنك نفّذت السداد فعليًا عبر وسيلة الدفع الخارجية.'); return; }
+          const next = b.dataset.next || '';
+          await run(async () => {
+            await D.executeTask(ADMIN, id); closeSheet();
+            toast('سُجّل تنفيذ المهمة ومصروفها مرة واحدة وأُنشئت مهمتها التالية وفق الخطة.' + (next ? ' فُتحت المهمة التالية؛ لم تُنفَّذ تلقائيًا.' : ''));
+            if (next) go('task/' + next, { replace: true }); else render();
+          }); return;
+        }
         case 'unrestrict': await run(async () => { const prev = (({ restricted, restrictionReason, restrictedAt }) => ({ restricted, restrictionReason, restrictedAt }))(D.read().numbers.find(x => x.id === id) || {});
           await D.transact(ADMIN, 'number_restriction_cleared', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); delete n.restricted; delete n.restrictionReason; delete n.restrictedAt; return { entityType: 'number', entityId: n.id, summary: `رفع تقييد الرقم ${n.number}` }; });
           render(); toast('رُفع التقييد عن الرقم.', false, { fn: () => D.transact(ADMIN, 'number_restriction_restored', d => { const n = d.numbers.find(x => x.id === id); if (!n) throw new Error('الرقم غير موجود.'); Object.entries(prev).forEach(([k, v]) => { if (v !== undefined) n[k] = v; }); return { entityType: 'number', entityId: n.id, summary: `استعادة تقييد الرقم ${n.number}` }; }) }); }); return;

@@ -25,7 +25,7 @@
   /* ------------------------------------------------------------------ */
   function home(d, ui) {
     const fin = M.finance(d), pending = d.purchaseRequests.filter(r => r.status === 'pending');
-    const avail = d.tasks.filter(t => M.taskAvailableNow(t, d, D)), overdue = avail.filter(t => M.taskClass(t, d, D) === 'overdue');
+    const avail = d.tasks.filter(t => M.taskAvailableNow(t, d, D));
     const soon = d.subscriptions.filter(s => M.isLive(s) && new Date(s.endsAt) <= Date.now() + 7 * 86400000);
     const open = d.tasks.filter(t => ['due', 'planned'].includes(t.status)).length;
     const demoKeys = ['customers', 'companies', 'packages', 'paymentMethods', 'purchaseRequests', 'numbers', 'subscriptions', 'pointTransactions', 'tasks', 'operations', 'financeEntries', 'notifications', 'idempotencyKeys', 'protectionPackages', 'protectionOperations', 'numberLinks'];
@@ -38,7 +38,7 @@
 ${K.section('يحتاج إلى إجراء')}
 ${K.card([
       K.row({ icon: 'receipt', tone: pending.length ? 'warn' : '', title: 'طلبات نقاط معلقة', sub: 'الاعتماد يضيف نقاطًا ولا ينشئ اشتراكًا', val: N(pending.length), to: 'requests/pending' }),
-      K.row({ icon: 'tasks', tone: overdue.length ? 'bad' : '', title: 'مهام جاهزة للتنفيذ', sub: overdue.length ? `${N(overdue.length)} منها متأخرة` : 'مستحقة أو متاحة مبكرًا', val: N(avail.length), to: 'tasks/available' }),
+      K.row({ icon: 'tasks', title: 'مهام جاهزة للتنفيذ', sub: 'مستحقة أو متاحة مبكرًا', val: N(avail.length), to: 'tasks/available' }),
       K.row({ icon: 'clock', title: 'اشتراكات تنتهي خلال 7 أيام', sub: 'مدة حماية الأرقام، مستقلة عن رصيد النقاط', val: N(soon.length), to: 'numbers/active' })])}
 ${K.section('وصول سريع')}
 ${K.card([
@@ -95,17 +95,22 @@ ${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, s
   /* ------------------------------------------------------------------ */
   function tasks(d, a, ui) {
     const tab = a === 'all' ? 'all' : 'available';
-    const opts = tab === 'all' ? [['all', 'كل الحالات'], ['early', 'متاحة مبكرًا'], ['due', 'مستحقة'], ['overdue', 'متأخرة'], ['planned', 'قادمة / مجدولة'], ['completed', 'مكتملة'], ['cancelled', 'ملغاة']] : [['all', 'كل الحالات'], ['early', 'متاحة مبكرًا'], ['due', 'مستحقة'], ['overdue', 'متأخرة']];
+    const opts = tab === 'all' ? [['all', 'كل الحالات'], ['early', 'متاحة مبكرًا'], ['due', 'مستحقة'], ['planned', 'قادمة / مجدولة'], ['completed', 'مكتملة'], ['cancelled', 'ملغاة']] : [['all', 'كل الحالات'], ['early', 'متاحة مبكرًا'], ['due', 'مستحقة']];
     const base = () => d.tasks.filter(t => tab === 'all' ? ['due', 'planned', 'executed', 'cancelled'].includes(t.status) : M.taskAvailableNow(t, d, D));
+    // تجميع بشركة الاتصالات (بند 52): رأس لكل شركة بعدد مهامها، والأقدم استحقاقًا أولًا ضمن الشركة
+    const taskRow = t => { const n = M.number(d, t.numberId), c = M.customer(d, t.customerId), cl = M.taskClass(t, d, D), since = M.sinceDue(t); return K.row({ icon: 'tasks', tone: cl === 'due' ? 'warn' : cl === 'completed' ? 'ok' : '', title: n?.number || 'رقم غير معروف', ltr: true, sub: E(c?.name || '—'), sub2: `الاستحقاق ${E(DT(t.dueAt))}${since ? ' · ' + since : ''}`, val: YER(t.expenseAmount), pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); };
     const list = () => {
-      const rows = base().filter(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId); return match(ui.q, n?.number, co?.name, c?.name, c?.email, t.id); }).filter(t => ui.filter === 'all' || M.taskClass(t, d, D) === ui.filter).sort((x, y) => new Date(y.executedAt || y.dueAt) - new Date(x.executedAt || x.dueAt));
+      const rows = base().filter(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId); return match(ui.q, n?.number, co?.name, c?.name, c?.email, t.id); }).filter(t => ui.filter === 'all' || M.taskClass(t, d, D) === ui.filter);
       if (!rows.length) return emptyQ(!!ui.q || ui.filter !== 'all', 'لا توجد مهام تطابق البحث.', tab === 'all' ? 'لا توجد مهام.' : 'لا توجد مهام متاحة أو مستحقة الآن.', 'tasks');
-      return paged(rows, ui, rows => K.card(rows.map(t => { const n = M.number(d, t.numberId), co = M.company(d, t.companyId), c = M.customer(d, t.customerId), cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'overdue' ? 'bad' : cl === 'due' ? 'warn' : cl === 'completed' ? 'ok' : '', title: n?.number || 'رقم غير معروف', ltr: true, sub: `${E(co?.name || '—')} · ${E(c?.name || '—')}`, sub2: `الاستحقاق ${E(DT(t.dueAt))}`, val: YER(t.expenseAmount), pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })));
+      const cmp = tab === 'all' ? ((x, y) => M.companyName(d, x).localeCompare(M.companyName(d, y), 'ar') || new Date(y.executedAt || y.dueAt) - new Date(x.executedAt || x.dueAt)) : null;
+      const groups = M.groupByCompany(rows, d, cmp), lim = ui.limit || PAGE; let left = lim, shown = 0;
+      const html = groups.map(g => { if (left <= 0) return ''; const part = g.tasks.slice(0, left); left -= part.length; shown += part.length; return K.section(g.name, N(g.tasks.length)) + K.card(part.map(taskRow)); }).join('');
+      return html + (rows.length > shown ? `<div class="more-wrap">${K.btn(`تحميل المزيد (${N(rows.length - shown)} متبقٍ)`, 'load-more', 'small')}</div>` : '');
     };
     const nAvail = d.tasks.filter(t => M.taskAvailableNow(t, d, D)).length;
-    return { tab: 'tasks', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">المهام</h1><p class="lede">تنفيذ مهام الأرقام المؤهلة وتسجيل مصروفها مرة واحدة.</p>
+    return { tab: 'tasks', chrome: 'tabs', list, html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">المهام</h1><p class="lede">كل مهمة تُنفَّذ على حدة: انسخ الرقم، نفّذ السداد خارج النظام، ثم سجّل التنفيذ هنا.</p>
 ${K.tabs([['available', 'متاحة الآن', nAvail], ['all', 'كل المهام']], tab, 'tasks')}
-${K.toolbar('ابحث بالرقم أو الشركة أو العميل', ui.q, opts, ui.filter)}<div id="listbody">${list()}</div>` };
+${K.toolbar('ابحث بالرقم أو الشركة أو العميل', ui.q, opts, ui.filter)}<div id="listbody">${list()}</div>${tab === 'available' ? K.section('مراجعة') + K.card([K.row({ icon: 'audit', title: 'مهام لم يُسجل تنفيذها', sub: 'تقرير داخلي بمهام مرّ موعدها دون توثيق', val: N(M.unrecordedTasks(d, D).length), to: 'unrecorded' })]) : ''}` };
   }
 
   function task(d, id) {
@@ -115,15 +120,22 @@ ${K.toolbar('ابحث بالرقم أو الشركة أو العميل', ui.q, o
     const exec = M.canExecute(d, t, D), early = new Date(t.dueAt) > Date.now(), canResched = cfg.allowReschedule === true && ['planned', 'due'].includes(t.status);
     const notYet = ['planned', 'due'].includes(t.status) && !exec && new Date(t.visibleAt || t.dueAt) > Date.now();
     const html = `<div class="hero"><div class="hero-top">${K.tile('tasks')}<div><h2 class="ltr">${E(n?.number || 'رقم غير معروف')}</h2><p>${E(co?.name || '—')}</p></div></div><small>مصروف المهمة</small><div class="big">${N(t.expenseAmount)}<em>ر.ي</em></div><span class="pill ${cl === 'completed' ? 'ok' : ''}">${M.TASK_LABEL[cl]}</span></div>
-${exec ? `<div style="margin-top:12px">${K.callout('info', early ? 'تنفيذ مبكر داخل نافذة الظهور' : 'المهمة جاهزة للتنفيذ', '<small style="display:block;line-height:1.8;margin-top:4px">عند التنفيذ يُسجَّل مصروف المهمة مرة واحدة في السجل المالي، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي. لا يتغير رصيد نقاط العميل.</small>', true)}</div>` : ''}
+${exec ? `<div style="margin-top:12px">${K.callout('info', early ? 'تنفيذ مبكر داخل نافذة الظهور' : 'المهمة جاهزة للتنفيذ', '<small style="display:block;line-height:1.9;margin-top:4px">1) انسخ رقم الهاتف.<br>2) انتقل إلى وسيلة السداد الخارجية ونفّذ السداد.<br>3) عد هنا وسجّل تنفيذ المهمة؛ عندها فقط يُسجَّل مصروفها مرة واحدة وتُنشأ المهمة التالية من وقت التنفيذ الفعلي. لا يتغير رصيد نقاط العميل.</small>', true)}</div>${n ? K.card([K.row({ icon: 'phone', title: n.number, ltr: true, sub: `${E(co?.name || '')} · انسخ الرقم قبل السداد`, val: K.copyBtn(n.number, 'رقم الهاتف'), plain: true })]) : ''}` : ''}
 ${notYet ? `<p class="note">لا يمكن تنفيذ المهمة قبل ${E(DT(t.visibleAt || t.dueAt))} (بداية نافذة الظهور).</p>` : ''}
-${K.section('بيانات المهمة')}${K.kv([['الرقم', n ? ltr(n.number) : '—'], ['الشركة', E(co?.name || '—')], ['العميل', E(c?.name || '—')], ['الاستحقاق', E(DT(t.dueAt))], ['بداية الظهور للتنفيذ', E(DT(t.visibleAt || t.dueAt))], ['الحالة', M.TASK_LABEL[cl], true], ['تاريخ التنفيذ', E(DT(t.executedAt))]])}
+${K.section('بيانات المهمة')}${K.kv([['الرقم', n ? ltr(n.number) : '—'], ['الشركة', E(co?.name || '—')], ['العميل', E(c?.name || '—')], ['الاستحقاق', E(DT(t.dueAt))], ['بداية الظهور للتنفيذ', E(DT(t.visibleAt || t.dueAt))], ['الحالة', M.TASK_LABEL[cl], true], ...(M.sinceDue(t) ? [['مضى على الاستحقاق', M.sinceDue(t)]] : []), ['تاريخ التنفيذ', E(DT(t.executedAt))]])}
 ${K.section('الربط المالي')}${K.kv([['قيد المصروف', t.financeEntryId ? E(t.financeEntryId) : '—'], ['معرّف الاشتراك', E(t.subscriptionId || '—')]])}
 ${!canResched ? `<p class="note">${cfg.allowReschedule === true ? 'لا يمكن إعادة جدولة هذه المهمة في حالتها الحالية.' : 'إعادة الجدولة معطلة في إعدادات الشركة.'}</p>` : '<p class="note">إعادة الجدولة متاحة؛ التعديل لا يعيد ضبط دورة المهام.</p>'}
 ${n ? K.section('الرقم') + K.card([K.row({ icon: 'phone', title: n.number, ltr: true, sub: E(co?.name || ''), to: 'number/' + n.id })]) : ''}
 ${t.financeEntryId && d.financeEntries.some(x => x.id === t.financeEntryId) ? K.card([K.row({ icon: 'ledger', title: 'قيد المصروف', sub: 'فتح تفاصيل القيد المالي', to: 'finance-entry/' + t.financeEntryId })]) : ''}`;
     const bar = (exec || canResched) ? `<div class="actionbar ${exec && canResched ? 'two' : ''}">${exec ? K.btn(early ? 'تنفيذ مبكرًا' : 'تنفيذ المهمة', 'task-execute-open', 'primary', `data-id="${E(t.id)}"`) : ''}${canResched ? K.btn('إعادة الجدولة', 'task-resched-open', exec ? '' : 'primary', `data-id="${E(t.id)}"`) : ''}</div>` : '';
     return { chrome: 'focus', title: 'تفاصيل المهمة', sub: n?.number || '', subLtr: true, html, bar };
+  }
+
+  /* بند 99: مهام مرّ موعدها ولم يُسجَّل تنفيذها. تقرير داخلي لا يغيّر أي بيانات ولا يعني أن السداد لم يحدث. */
+  function unrecorded(d, ui) {
+    const rows = M.unrecordedTasks(d, D), groups = M.groupByCompany(rows, d);
+    const body = rows.length ? groups.map(g => K.section(g.name, N(g.tasks.length)) + K.card(g.tasks.map(t => { const n = M.number(d, t.numberId), c = M.customer(d, t.customerId), since = M.sinceDue(t); return K.row({ icon: 'tasks', title: n?.number || 'رقم غير معروف', ltr: true, sub: E(c?.name || '—'), sub2: `الاستحقاق ${E(DT(t.dueAt))}${since ? ' · ' + since : ''}`, val: YER(t.expenseAmount), to: 'task/' + t.id }); }))).join('') : K.empty('لا توجد مهام مرّ موعدها دون تسجيل تنفيذ.', 'check');
+    return { chrome: 'focus', title: 'مهام لم يُسجل تنفيذها', sub: `${N(rows.length)} مهمة`, html: `${K.callout('info', 'كيف تُقرأ هذه القائمة؟', '<small style="display:block;line-height:1.9;margin-top:4px">هذه مهام مرّ موعدها ولم يُوثَّق تنفيذها في النظام. غياب التسجيل لا يعني بالضرورة أن السداد لم يحدث؛ قد يكون نُفِّذ خارج النظام ولم يُسجَّل بعد. افتح المهمة وسجّل تنفيذها بعد التأكد.</small>')}${body}` };
   }
 
   /* ------------------------------------------------------------------ */
@@ -195,7 +207,7 @@ ${K.toolbar('ابحث برقم الهاتف أو العميل أو الشركة'
 <p class="note">الإدارة للاطلاع فقط؛ تفعيل الاشتراك وتمديده يتمان من واجهة العميل ومن رصيد نقاطه.</p>
 ${K.section('المالك والشركة')}${K.kv([['المالك', E(c?.name || '—')], ['البريد الإلكتروني', c ? ltr(c.email) : '—'], ['الشركة', E(co?.name || '—')], ['حالة التقييد', n.restricted ? `مقيّد: ${E(n.restrictionReason || '—')}` : 'غير مقيّد']])}
 ${K.section('الاشتراك')}${sub ? K.kv([['الحالة', E(M.status(sub.status)), true], ['بداية الاشتراك', E(DY(sub.startsAt))], ['المدة والانتهاء', `${N(sub.days)} يوم · ${E(DY(sub.endsAt))}`], ['التعرفة المحفوظة', `${N(sub.rateSnapshot)} نقطة/يوم`], ['تكلفة العملية', `${N(sub.pointsCost)} نقطة`]]) : K.empty('لا يوجد سجل اشتراك مرتبط بهذا الرقم.', 'shield')}
-${sub ? K.section(`مخطط المهام (${plan.length})`) + (plan.length ? K.card(plan.map(t => { const cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'completed' ? 'ok' : cl === 'overdue' ? 'bad' : '', title: DT(t.dueAt), sub: `${YER(t.expenseAmount)} · ${t.executedAt ? 'نُفذت ' + E(DT(t.executedAt)) : 'غير منفذة'}`, pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })) : K.empty('لا توجد مهام لهذا الاشتراك.', 'tasks')) : ''}
+${sub ? K.section(`مخطط المهام (${plan.length})`) + (plan.length ? K.card(plan.map(t => { const cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'completed' ? 'ok' : '', title: DT(t.dueAt), sub: `${YER(t.expenseAmount)} · ${t.executedAt ? 'نُفذت ' + E(DT(t.executedAt)) : 'غير منفذة'}`, pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })) : K.empty('لا توجد مهام لهذا الاشتراك.', 'tasks')) : ''}
 ${holdersBlock(d, n)}${notesSection(d, 'number', n.id)}
 ${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
     return { chrome: 'focus', title: 'تفاصيل الرقم', sub: n.number, subLtr: true, html, bar: n.restricted ? `<div class="actionbar">${K.btn('رفع التقييد', 'unrestrict', 'primary', `data-id="${E(n.id)}"`)}</div>` : '' };
@@ -231,7 +243,8 @@ ${rev ? K.section('عكس قيد') + `<div class="card"><p class="note in-card">
     return { chrome: 'tabs', tab: 'more', html: `<header class="lead"><div class="lead-end" style="margin-inline-start:auto">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}</div></header><h1 class="display">المزيد</h1><p class="lede">المالية والإعداد والنظام.</p>
 ${g('المالية والتشغيل', [
       { icon: 'ledger', title: 'السجل المالي', sub: 'إيرادات ومصروفات وقيود يدوية وعكسية', to: 'finance' },
-      { icon: 'phone', title: 'الأرقام والاشتراكات', sub: `${N(d.numbers.length)} رقم`, to: 'numbers/active' }])}
+      { icon: 'phone', title: 'الأرقام والاشتراكات', sub: `${N(d.numbers.length)} رقم`, to: 'numbers/active' },
+      { icon: 'audit', title: 'مهام لم يُسجل تنفيذها', sub: 'تقرير داخلي بمهام مرّ موعدها دون توثيق', to: 'unrecorded' }])}
 ${g('الإعداد', [
       { icon: 'building', title: 'الشركات', sub: `${N(d.companies.length)} شركة · بادئات وأطوال أرقام`, to: 'companies' },
       { icon: 'sliders', title: 'إعدادات المهام الدورية', sub: 'ثمانية خيارات لكل شركة', to: 'task-settings' },
@@ -440,6 +453,7 @@ ${K.section('البيانات')}${K.card([K.row({ icon: 'download', title: 'تن
       case 'request': return request(d, a);
       case 'tasks': return tasks(d, a, ui);
       case 'task': return task(d, a);
+      case 'unrecorded': return unrecorded(d, ui);
       case 'customers': return customers(d, a, ui);
       case 'customer': return customer(d, a, b);
       case 'numbers': return numbers(d, a, ui);

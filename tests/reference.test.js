@@ -99,13 +99,12 @@ test('واجهة العميل تعرض قائمة أرقام الحساب مع �
 });
 
 
-test('تصنيفات واجهة المهام تميّز المتأخر والمبكر والمجدول والمكتمل والملغى',()=>{
+test('تصنيفات واجهة المهام تميّز المبكر والمستحق والمجدول والمكتمل والملغى بلا «متأخرة» (بنود 35 و99)',()=>{
   const admin=adminSrc();
-  assert.match(admin,/const isOverdue = /);
+  assert.doesNotMatch(admin,/isOverdue|overdue|'متأخرة'|المهام المتأخرة|تعذر السداد/);
   assert.match(admin,/const taskClass = /);
   assert.match(admin,/متاحة للتنفيذ المبكر/);
   assert.match(admin,/\['early', 'متاحة مبكرًا'\]/);
-  assert.match(admin,/\['overdue', 'متأخرة'\]/);
   assert.match(admin,/\['planned', 'قادمة \/ مجدولة'\]/);
   assert.match(admin,/\['completed', 'مكتملة'\]/);
   assert.match(admin,/\['cancelled', 'ملغاة'\]/);
