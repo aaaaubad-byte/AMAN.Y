@@ -141,8 +141,8 @@
       await X.saveClass(D, adminId, t.companyId, { name: t.item.name, upToDays: t.item.upToDays, notify: t.item.notify, noticeText: t.item.noticeText });
     }
     return D.transact(adminId, 'trash_restored', db => {
-      if (t.kind === 'template') { if (db.messageTemplates.some(x => x.id === t.item.id)) throw new Error('القالب موجود بالفعل.'); db.messageTemplates.push(t.item); }
-      else if (t.kind === 'note') { if (db.internalNotes.some(x => x.id === t.item.id)) throw new Error('الملاحظة موجودة بالفعل.'); if (!['customer', 'number', 'request'].includes(t.item.entityType)) throw new Error('نوع الملاحظة غير صالح.'); db.internalNotes.push(t.item); }
+      if (t.kind === 'template') { const list = db.messageTemplates = arr(db.messageTemplates); if (list.some(x => x.id === t.item.id)) throw new Error('القالب موجود بالفعل.'); list.push(t.item); }
+      else if (t.kind === 'note') { const list = db.internalNotes = arr(db.internalNotes); if (list.some(x => x.id === t.item.id)) throw new Error('الملاحظة موجودة بالفعل.'); if (!['customer', 'number', 'request'].includes(t.item.entityType)) throw new Error('نوع الملاحظة غير صالح.'); list.push(t.item); }
       else if (t.kind !== 'expiryClass') throw new Error('نوع العنصر غير قابل للاستعادة.');
       setSettings(db, { trash: arr(db.settings?.trash).filter(x => x.id !== trashId) });
       return { entityType: t.kind, entityId: t.item.id || null, summary: `استعادة «${t.label}» من سلة المحذوفات` };
