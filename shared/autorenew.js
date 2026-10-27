@@ -5,6 +5,7 @@
    (3) لا يُنفَّذ شيء إلا إن دخل الاشتراك السارِي تصنيف «التجديد التلقائي» المحدد للشركة (أضيق تصنيف مطابق)؛
    (4) التنفيذ عبر D.performProtectionOperation بعملية «تمديد» (تحافظ على كل قواعد الرصيد والقيود والمهام) ومفتاح منع تكرار
        auto:<اشتراك>:<نهاية> فلا خصم مكرر؛ (5) عند فشل (رصيد غير كافٍ أو تقييد) لا شيء يُخصم ويُسجَّل السبب ويُشعَر العميل مرة واحدة لكل مفتاح.
+   حارس التكرار: حجز ذرّي لكل رقم قبل الخصم + سقف تجديد واحد كل 24 ساعة لكل رقم (انظر claim).
    توقيت التنفيذ: لا مجدول خلفي، فيجري بزر «تشغيل الآن» في الإدارة فقط (لا تشغيل عند فتحها لأنه يخصم نقاط العملاء؛ سؤال مفتوح موثق). المنفِّذ في السجل: صاحب الاشتراك بعملية بمفتاح auto:. */
 (function (root, factory) {
   const api = factory();
@@ -12,10 +13,10 @@
   if (root) root.AmanAutoRenew = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const DAY = 86400000, LOG_MAX = 200;
+  const DAY = 86400000, LOG_MAX = 200, CLAIM_TTL = 5 * 60000, COOLDOWN = DAY; // حجز تنفيذ جارٍ لا يتجاوز 5 دقائق؛ وسقف تجديد واحد لكل رقم كل 24 ساعة فعلية
   const arr = x => (Array.isArray(x) ? x : []);
-  const cfg = db => { const a = db?.settings?.autoRenew || {}; return { companies: { ...(a.companies || {}) }, optIns: { ...(a.optIns || {}) }, log: arr(a.log) }; };
-  const put = (db, c) => { db.settings = { ...(db.settings || {}), autoRenew: { companies: c.companies, optIns: c.optIns, log: c.log.slice(-LOG_MAX) } }; };
+  const cfg = db => { const a = db?.settings?.autoRenew || {}; return { companies: { ...(a.companies || {}) }, optIns: { ...(a.optIns || {}) }, log: arr(a.log), claims: { ...(a.claims || {}) }, last: { ...(a.last || {}) } }; };
+  const put = (db, c) => { db.settings = { ...(db.settings || {}), autoRenew: { companies: c.companies, optIns: c.optIns, log: c.log.slice(-LOG_MAX), claims: c.claims, last: c.last } }; };
   const companyAllowed = (db, companyId) => cfg(db).companies[companyId]?.allowed === true;
   const classCfg = (X, db, companyId) => (X ? X.forCompany(db, companyId) : { classes: [], autoRenewClassId: '' });
 
@@ -76,31 +77,63 @@
   }
 
   /* ----- التنفيذ (84) ----- */
-  async function logEntry(D, entry) {
-    await D.transact('autorenew', null, db => { const c = cfg(db); c.log.push({ id: D.uid('arlog'), at: D.now(), ...entry }); put(db, c); });
-  }
-  async function run(D, X, at = Date.now()) {
-    const snap = D.read(), out = { renewed: 0, failed: 0, waiting: 0, skipped: 0, details: [] };
-    for (const numberId of Object.keys(cfg(snap).optIns)) {
-      const db = D.read(), r = check(db, numberId, X, at), num = db.numbers.find(x => x.id === numberId);
-      if (!r.eligible) { if (r.code === 'wait' || r.code === 'off') out.waiting++; else out.skipped++; continue; }
-      const already = cfg(db).log.some(l => l.key === r.key && l.result === 'renewed');
-      if (already) { out.skipped++; continue; }
-      const customerId = r.optIn.customerId;
-      const balance = D.balance(customerId, db);
-      try {
-        if (balance < r.cost) throw new Error('رصيد أمان غير كافٍ للتجديد التلقائي.');
-        await D.performProtectionOperation(customerId, numberId, r.package.id, 'extend', r.key);
-        await logEntry(D, { numberId, customerId, subscriptionId: r.sub.id, key: r.key, result: 'renewed', message: `مُدّد الرقم ${num?.number} بباقة ${r.package.name} وخُصمت ${r.cost} نقطة.` });
-        out.renewed++; out.details.push({ numberId, ok: true });
-      } catch (e) {
-        const msg = String(e?.message || 'تعذر التجديد التلقائي.'), first = !cfg(D.read()).log.some(l => l.key === r.key && l.result === 'failed' && l.message === msg);
-        if (first) {
-          await logEntry(D, { numberId, customerId, subscriptionId: r.sub.id, key: r.key, result: 'failed', message: msg });
-          await D.transact('autorenew', null, d2 => { d2.notifications.unshift({ id: D.uid('notice'), customerId, numberId, title: 'تعذر التجديد التلقائي', body: `لم يُجدَّد الرقم ${num?.number} تلقائيًا: ${msg} لم تُخصم أي نقاط.`, status: 'delivered-local', createdAt: D.now(), readAt: null }); });
+  /* حارس التكرار (ذرّي): قبل أي خصم يُحجَز الرقم داخل معاملة واحدة (إعادة فحص الأهلية + منع الحجز المتزامن + سقف 24 ساعة بالساعة
+     الفعلية)، فلا تتكرر عملية تجديد وخصم لرقم واحد بالتزامن (عدة تبويبات) ولا بتكرار الضغط. الحجز المنقطع (انقطاع بعد الخصم وقبل
+     التسجيل) يُسوّى بعد انقضاء مهلته بالرجوع إلى مفتاح منع التكرار في عمليات الحماية. لا يغيّر شروط الأهلية ولا حدود التصنيفات. */
+  async function claim(D, X, numberId, at) {
+    const { result } = await D.transact('autorenew', null, db => {
+      const c = cfg(db), wall = Date.now(), cl = c.claims[numberId]; let dirty = false;
+      if (cl) {
+        if (wall - Number(cl.at) < CLAIM_TTL) return { ok: false, code: 'busy' };
+        const done = arr(db.protectionOperations).some(o => o.idempotencyKey === cl.key);
+        if (done && !c.log.some(l => l.key === cl.key && l.result === 'renewed')) {
+          c.log.push({ id: D.uid('arlog'), at: D.now(), numberId, customerId: cl.customerId, subscriptionId: cl.subscriptionId, key: cl.key, result: 'renewed', message: 'سُوّي تجديد انقطع تسجيله بعد الخصم.' });
+          c.last[numberId] = D.now();
         }
-        out.failed++; out.details.push({ numberId, ok: false, message: msg });
+        delete c.claims[numberId]; dirty = true;
       }
+      const r = check(db, numberId, X, at), out = (ok, code) => { if (dirty) put(db, c); return ok ? { ok, r } : { ok, code }; };
+      if (!r.eligible) return out(false, r.code);
+      if (c.log.some(l => l.key === r.key && l.result === 'renewed')) return out(false, 'done');
+      const last = c.last[numberId]; if (last && wall - new Date(last).getTime() < COOLDOWN) return out(false, 'cooldown');
+      c.claims[numberId] = { key: r.key, at: wall, customerId: r.optIn.customerId, subscriptionId: r.sub.id }; dirty = true;
+      return out(true);
+    });
+    return result;
+  }
+  // إنهاء الحجز وتسجيل النتيجة (والإشعار عند الفشل لأول مرة) في معاملة واحدة
+  async function finish(D, numberId, r, num, error) {
+    await D.transact('autorenew', null, db => {
+      const c = cfg(db); if (c.claims[numberId] && c.claims[numberId].key === r.key) delete c.claims[numberId];
+      const base = { numberId, customerId: r.optIn.customerId, subscriptionId: r.sub.id, key: r.key };
+      if (!error) { c.log.push({ id: D.uid('arlog'), at: D.now(), ...base, result: 'renewed', message: `مُدّد الرقم ${num?.number} بباقة ${r.package.name} وخُصمت ${r.cost} نقطة.` }); c.last[numberId] = D.now(); }
+      else if (!c.log.some(l => l.key === r.key && l.result === 'failed' && l.message === error)) {
+        c.log.push({ id: D.uid('arlog'), at: D.now(), ...base, result: 'failed', message: error });
+        db.notifications.unshift({ id: D.uid('notice'), customerId: r.optIn.customerId, numberId, title: 'تعذر التجديد التلقائي', body: `لم يُجدَّد الرقم ${num?.number} تلقائيًا: ${error} لم تُخصم أي نقاط.`, status: 'delivered-local', createdAt: D.now(), readAt: null });
+      }
+      put(db, c);
+    });
+  }
+  let running = null; // الضغط المتكرر داخل الصفحة نفسها يشارك التنفيذ الجاري بدل بدء تنفيذ ثانٍ
+  function run(D, X, at = Date.now()) {
+    if (running) return running;
+    running = runOnce(D, X, at).finally(() => { running = null; });
+    return running;
+  }
+  async function runOnce(D, X, at) {
+    const snap = D.read(), out = { renewed: 0, failed: 0, waiting: 0, skipped: 0, guarded: 0, details: [] };
+    for (const numberId of Object.keys(cfg(snap).optIns)) {
+      const db = D.read(), hasClaim = !!cfg(db).claims[numberId], pre = hasClaim ? { eligible: true } : check(db, numberId, X, at); // وجود حجز قديم يمر إلى claim ليُسوّى
+      if (!pre.eligible) { if (pre.code === 'wait' || pre.code === 'off') out.waiting++; else out.skipped++; continue; }
+      const g = await claim(D, X, numberId, at);
+      if (!g.ok) { if (['busy', 'done', 'cooldown'].includes(g.code)) out.guarded++; else if (g.code === 'wait' || g.code === 'off') out.waiting++; else out.skipped++; continue; }
+      const r = g.r, num = D.read().numbers.find(x => x.id === numberId); let error = null;
+      try {
+        if (D.balance(r.optIn.customerId) < r.cost) throw new Error('رصيد أمان غير كافٍ للتجديد التلقائي.');
+        await D.performProtectionOperation(r.optIn.customerId, numberId, r.package.id, 'extend', r.key);
+      } catch (e) { error = String(e?.message || 'تعذر التجديد التلقائي.'); }
+      await finish(D, numberId, r, num, error);
+      if (error) { out.failed++; out.details.push({ numberId, ok: false, message: error }); } else { out.renewed++; out.details.push({ numberId, ok: true }); }
     }
     return out;
   }

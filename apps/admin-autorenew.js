@@ -21,7 +21,7 @@
         + `<div class="rowfoot">${K.btn(on ? 'منع التجديد التلقائي' : 'السماح بالتجديد التلقائي', 'ar-allow', on ? '' : 'primary', `data-id="${E(co.id)}" data-to="${on ? 'off' : 'on'}"`)}${K.btn('تصنيفات الشركة', 'go', '', `data-to="expiry/${E(co.id)}"`)}</div>`;
     });
     const log = AR.logList(d, 30).map(l => { const n = d.numbers.find(x => x.id === l.numberId), [lab, tone] = RES[l.result] || [l.result, '']; return K.row({ icon: 'clock', title: n ? n.number : l.numberId, ltr: true, sub: E(l.message || ''), sub2: E(stamp(l.at)), pill: K.pill(lab, tone), plain: true }); });
-    return { chrome: 'focus', title: 'التجديد التلقائي', sub: `${N(opt.length)} رقم مفعّل`, bar: '', html: `${K.callout('info', 'كيف يعمل؟', small('تسمح الإدارة بالميزة لكل شركة وتربطها بتصنيف قرب انتهاء. يفعّلها العميل على رقمه باختيار باقة حماية. عند دخول اشتراكه ساري المفعول ذلك التصنيف وتوفر رصيده يُمدَّد اشتراكه بتلك الباقة مرة واحدة (مفتاح منع تكرار)؛ عند عدم كفاية الرصيد لا يُخصم شيء ويُسجَّل السبب ويُشعَر العميل مرة واحدة. لا مجدول خلفي: ينفّذ زر «تشغيل الآن» فقط.'))}${K.section('الشركات', N(rows.length))}${rows.length ? K.card(rows) : K.empty('لا توجد شركات بعد.', 'building', 'لا توجد شركات')}${K.section('التنفيذ')}<div>${K.btn('تشغيل التجديد التلقائي الآن', 'ar-run', 'primary', '', 'repeat')}</div>${K.note('يخصم نقاط العملاء المؤهلين المفعّلين فعليًا. لا تتكرر العملية على الاشتراك نفسه.')}${K.section('سجل التنفيذ', N(log.length))}${log.length ? K.card(log) : K.empty('لم يُنفَّذ تجديد تلقائي بعد.', 'clock', 'لا توجد أحداث')}` };
+    return { chrome: 'focus', title: 'التجديد التلقائي', sub: `${N(opt.length)} رقم مفعّل`, bar: '', html: `${K.callout('info', 'كيف يعمل؟', small('تسمح الإدارة بالميزة لكل شركة وتربطها بتصنيف قرب انتهاء. يفعّلها العميل على رقمه باختيار باقة حماية. عند دخول اشتراكه ساري المفعول ذلك التصنيف وتوفر رصيده يُمدَّد اشتراكه بتلك الباقة مرة واحدة (مفتاح منع تكرار)؛ عند عدم كفاية الرصيد لا يُخصم شيء ويُسجَّل السبب ويُشعَر العميل مرة واحدة. لا مجدول خلفي: ينفّذ زر «تشغيل الآن» فقط، ولا يتكرر تجديد الرقم الواحد أكثر من مرة كل 24 ساعة.'))}${K.section('الشركات', N(rows.length))}${rows.length ? K.card(rows) : K.empty('لا توجد شركات بعد.', 'building', 'لا توجد شركات')}${K.section('التنفيذ')}<div>${K.btn('تشغيل التجديد التلقائي الآن', 'ar-run', 'primary', '', 'repeat')}</div>${K.note('يخصم نقاط العملاء المؤهلين المفعّلين فعليًا. لا تتكرر العملية على الاشتراك نفسه.')}${K.section('سجل التنفيذ', N(log.length))}${log.length ? K.card(log) : K.empty('لم يُنفَّذ تجديد تلقائي بعد.', 'clock', 'لا توجد أحداث')}` };
   }
 
   const base = EXP.build;
@@ -43,7 +43,7 @@
       if (b.dataset.act === 'ar-allow') { await AR.setCompanyAllowed(D, ADMIN, b.dataset.id, b.dataset.to === 'on', X); toast(b.dataset.to === 'on' ? 'سُمح بالتجديد التلقائي للشركة.' : 'مُنع التجديد التلقائي للشركة.'); rerender(); }
       else if (b.dataset.act === 'ar-run') {
         const r = await AR.run(D, X);
-        toast(r.renewed || r.failed ? `جُدّد ${N(r.renewed)} رقم، وتعذر ${N(r.failed)}.` : 'لا توجد أرقام مؤهلة الآن.', r.failed > 0 && !r.renewed); rerender();
+        toast(r.renewed || r.failed ? `جُدّد ${N(r.renewed)} رقم، وتعذر ${N(r.failed)}.` + (r.guarded ? ` وحُجب ${N(r.guarded)} لتجديدها مؤخرًا.` : '') : r.guarded ? `لم يُنفَّذ تجديد جديد: ${N(r.guarded)} رقم جُدّد مؤخرًا أو قيد التنفيذ (حد أقصى مرة كل 24 ساعة لكل رقم).` : 'لا توجد أرقام مؤهلة الآن.', r.failed > 0 && !r.renewed); rerender();
       }
     } catch (err) { toast(err?.message || 'تعذرت العملية.', true); }
     busy = false;

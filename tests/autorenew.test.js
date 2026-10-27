@@ -98,3 +98,58 @@ test('إعدادات التجديد التلقائي لا تصل إلى نسخة
   await subscribed(20);
   assert.equal(D.readForCustomer('c1').settings, undefined);
 });
+
+// ---- حارس التكرار (ذرّي) ----
+const patchAR = fn => D.transact('t', null, db => { const a = db.settings.autoRenew; fn(a); });
+
+test('تشغيلان متزامنان لا ينتجان إلا تجديدًا وخصمًا واحدًا', async () => {
+  const n = await subscribed(20), late = Date.now() + 8 * DAY, before = D.balance('c1');
+  await Promise.all([AR.run(D, X, late), AR.run(D, X, late), AR.run(D, X, late)]);
+  assert.equal(D.balance('c1'), before - 5);
+  assert.equal(D.read().protectionOperations.filter(o => o.type === 'extend' && String(o.idempotencyKey).startsWith('auto:')).length, 1);
+  assert.equal(AR.logList(D.read()).filter(l => l.result === 'renewed').length, 1);
+  assert.deepEqual(D.read().settings.autoRenew.claims, {});
+});
+
+test('حجز قائم من تبويب آخر يمنع التنفيذ دون أي خصم', async () => {
+  const n = await subscribed(20), late = Date.now() + 8 * DAY, before = D.balance('c1'), key = AR.check(D.read(), n.id, X, late).key;
+  await patchAR(a => { a.claims = { [n.id]: { key, at: Date.now(), customerId: 'c1', subscriptionId: 'x' } }; });
+  const r = await AR.run(D, X, late);
+  assert.equal(r.renewed, 0); assert.equal(r.guarded, 1);
+  assert.equal(D.balance('c1'), before);
+  assert.equal(D.read().protectionOperations.filter(o => String(o.idempotencyKey).startsWith('auto:')).length, 0);
+});
+
+test('حجز منقطع قديم: يُسوّى ثم يُسمح بالتنفيذ إن لم تحدث عملية خصم', async () => {
+  const n = await subscribed(20), late = Date.now() + 8 * DAY, before = D.balance('c1');
+  await patchAR(a => { a.claims = { [n.id]: { key: 'auto:stale', at: Date.now() - 10 * 60000, customerId: 'c1', subscriptionId: 'x' } }; });
+  assert.equal((await AR.run(D, X, late)).renewed, 1);
+  assert.equal(D.balance('c1'), before - 5);
+  assert.deepEqual(D.read().settings.autoRenew.claims, {});
+});
+
+test('حجز منقطع بعد خصم فعلي يُسجَّل تجديدًا ولا يُكرَّر الخصم', async () => {
+  const n = await subscribed(20), late = Date.now() + 8 * DAY, chk = AR.check(D.read(), n.id, X, late), before = D.balance('c1');
+  await D.performProtectionOperation('c1', n.id, 'pp1', 'extend', chk.key); // خصم تمّ ثم انقطع التسجيل
+  await patchAR(a => { a.claims = { [n.id]: { key: chk.key, at: Date.now() - 10 * 60000, customerId: 'c1', subscriptionId: chk.sub.id } }; });
+  await AR.run(D, X, late);
+  assert.equal(D.balance('c1'), before - 5);
+  assert.equal(AR.logList(D.read()).filter(l => l.key === chk.key && l.result === 'renewed').length, 1);
+});
+
+test('الضغط المتكرر بعد تجديد لا يزال الرقم بعده داخل التصنيف لا يخصم ثانية، ويُرفع الحجب بعد 24 ساعة دون تغيير شروط الأهلية', async () => {
+  const n = await setup(20);
+  await D.transact('t', null, db => { db.protectionPackages.push({ id: 'pp2', companyId: 'co1', name: 'قصيرة', days: 1, pointsCost: 1, active: true }); });
+  await D.performProtectionOperation('c1', n.id, 'pp1', 'subscribe', 'k-sub');
+  await AR.setCompanyAllowed(D, 'adm', 'co1', true, X);
+  await AR.setOptIn(D, 'c1', n.id, 'pp2', true, X);
+  const late = Date.now() + Math.round(9.5 * DAY), b0 = D.balance('c1');
+  assert.equal((await AR.run(D, X, late)).renewed, 1);
+  assert.equal(AR.check(D.read(), n.id, X, late).eligible, true); // الأهلية نفسها: ما زال داخل التصنيف
+  const r2 = await AR.run(D, X, late);
+  assert.equal(r2.renewed, 0); assert.equal(r2.guarded, 1);
+  assert.equal(D.balance('c1'), b0 - 1);
+  await patchAR(a => { a.last = { [n.id]: new Date(Date.now() - 25 * 3600000).toISOString() }; });
+  assert.equal((await AR.run(D, X, late)).renewed, 1);
+  assert.equal(D.balance('c1'), b0 - 2);
+});
