@@ -79,6 +79,8 @@ h1,h2,h3,p{margin:0}
 button.row:active{background:rgba(0,0,0,.04)}
 .row+.row::before{content:"";position:absolute;top:0;inset-inline-start:70px;inset-inline-end:0;border-top:1px solid var(--line)}
 .row.plain+.row.plain::before{inset-inline-start:16px}
+.rowfoot{display:grid;gap:8px;padding:0 16px 14px}
+.rowfoot+.row::before{content:"";position:absolute;top:0;inset-inline:16px;border-top:1px solid var(--line)}
 .ico{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:var(--r-tile);background:var(--tile);color:var(--ink)}
 .ico svg{width:20px;height:20px}
 .ico.dark{background:var(--black);color:var(--on-black)}

@@ -92,7 +92,8 @@ button.row:active{background:rgba(0,0,0,.04)}
 .row .ltr{text-align:start}
 .pill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;background:var(--tile);color:var(--ink);white-space:nowrap;line-height:1}
 .pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.warn{background:var(--warn-bg);color:var(--warn)}.pill.bad{background:var(--bad-bg);color:var(--bad)}.pill.dark{background:var(--black);color:var(--on-black)}
-.rowfoot{padding:0 16px 14px}
+.rowfoot{display:grid;gap:8px;padding:0 16px 14px}
+.rowfoot+.row::before{content:"";position:absolute;top:0;inset-inline:16px;border-top:1px solid var(--line)}
 
 /* ===== البطاقة الداكنة ===== */
 .hero{background:var(--hero);color:var(--on-hero);border-radius:var(--r-card);padding:20px;display:grid;gap:4px}
