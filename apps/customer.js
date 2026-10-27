@@ -95,6 +95,9 @@
   function snapshot() {
     const all = D.read();
     if (ui.id && !all.customers.some(x => x.id === ui.id)) { sessionStorage.removeItem('aman.customer'); ui.id = ''; }
+    if (ui.id && !D.canLogin(all.customers.find(x => x.id === ui.id))) { // منع دخول فُرض أثناء جلسة جارية: تنتهي الجلسة ويظهر السبب العام مرة واحدة
+      sessionStorage.removeItem('aman.customer'); ui.id = ''; ui.kicked = true;
+    }
     if (!ui.id) return { d: all, c: null };
     const d = D.readForCustomer(ui.id);
     return { d, c: d.customers[0] };
@@ -117,6 +120,7 @@
       screen.className = 'screen auth auth-screen';
       screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials(), DEMO) : S.signup();
       barEl.innerHTML = ''; tabbar.hidden = true; ui.view = null;
+      if (ui.kicked) { ui.kicked = false; toast(D.LOGIN_BLOCKED_MESSAGE, true); }
       { // تركيز تلقائي على أول حقل فارغ في شاشات الدخول (البند 14)
         const els = [...screen.querySelectorAll('input:not([type=checkbox]):not([type=hidden])')];
         (els.find(i => !i.value) || els[0])?.focus({ preventScroll: true });
@@ -507,6 +511,7 @@
           }
           if (!c) throw new Error('البريد الإلكتروني غير مسجل.');
           if (!(await verifyPassword(password, c.authHash))) throw new Error('بيانات الدخول غير صحيحة.');
+          if (!D.canLogin(c)) throw new Error(D.LOGIN_BLOCKED_MESSAGE); // بعد التحقق من كلمة المرور فقط حتى لا يُكشف وضع حساب لمن لا يملك بياناته
           if (!String(c.authHash).startsWith('pbkdf2$')) { // ترقية التجزئة القديمة بعد التحقق الناجح
             const upgraded = await hashPassword(password);
             await D.transact('local-auth', 'password_hash_upgraded', d => { const x = d.customers.find(y => y.id === c.id); if (x) x.authHash = upgraded; return { entityType: 'customer', entityId: c.id, summary: 'ترقية تجزئة كلمة المرور' }; });

@@ -148,6 +148,7 @@
   async function createPurchase(customerId, packageId, paymentMethodId, reference) {
     return transact(customerId,'purchase_requested',db=>{
       const c=db.customers.find(x=>x.id===customerId); if(!c) throw new Error('الحساب غير موجود.');
+      assertAllowed(c,'purchase');
       const p=db.packages.find(x=>x.id===packageId&&x.active!==false),m=db.paymentMethods.find(x=>x.id===paymentMethodId&&x.active!==false);
       if(!p||!m) throw new Error('الباقة أو وسيلة الدفع غير متاحة.');
       if(!Number.isInteger(Number(p.points))||Number(p.points)<=0||!Number.isFinite(Number(p.price))||Number(p.price)<=0)throw new Error('قيم الباقة غير صالحة.');
@@ -222,6 +223,68 @@
       return{entityType:'customer',entityId:c.id,summary:`حذف حساب العميل ${label} وإخفاء هويته مع الإبقاء على السجلات المالية والتدقيقية`};
     });
   }
+  /* ----- حالة العميل والوسوم والتصنيفات (U10: بنود 33، 53، 54، 75): للإدارة فقط ولا يصل أي منها إلى نسخة العميل ----- */
+  const RESTRICTION_KEYS=['login','purchase','protection'];
+  const RESTRICT_MSG={login:'تعذر الدخول: الحساب غير متاح حاليًا. تواصل مع الإدارة.',purchase:'تعذر تنفيذ العملية: شراء النقاط غير متاح لحسابك حاليًا. تواصل مع الإدارة.',protection:'تعذر تنفيذ العملية: خدمات الحماية غير متاحة لحسابك حاليًا. تواصل مع الإدارة.'};
+  // الأثر الفعلي للحالة: المحظور = الثلاثة دائمًا، الموقوف = ما اختارته الإدارة، الفعال = لا شيء
+  function restrictionsOf(c){
+    const out={login:false,purchase:false,protection:false};if(!c)return out;
+    if(c.status==='blocked'){for(const k of RESTRICTION_KEYS)out[k]=true;}
+    else if(c.status==='suspended'){for(const k of RESTRICTION_KEYS)out[k]=c.restrictions?.[k]===true;}
+    return out;
+  }
+  function assertAllowed(c,kind){if(restrictionsOf(c)[kind])throw new Error(RESTRICT_MSG[kind]);}
+  const canLogin=c=>!restrictionsOf(c).login;
+  const LOGIN_BLOCKED_MESSAGE=RESTRICT_MSG.login;
+  async function setCustomerStatus(adminId,customerId,input={}){
+    return transact(adminId,'customer_status_changed',db=>{
+      const c=db.customers.find(x=>x.id===customerId);if(!c||c.status==='deleted')throw new Error('الحساب غير موجود أو محذوف.');
+      const to=String(input.status||'');if(!['active','suspended','blocked'].includes(to))throw new Error('حالة الحساب غير صالحة.');
+      const reason=String(input.reason||'').trim();if(reason.length>300)throw new Error('السبب أطول من 300 حرف.');
+      const from=c.status||'active',previous=restrictionsOf(c);
+      let restr={login:false,purchase:false,protection:false};
+      if(to==='blocked')for(const k of RESTRICTION_KEYS)restr[k]=true;
+      if(to==='suspended'){for(const k of RESTRICTION_KEYS)restr[k]=input.restrictions?.[k]===true;if(!RESTRICTION_KEYS.some(k=>restr[k]))throw new Error('اختر أثرًا واحدًا على الأقل للإيقاف.');}
+      if(to!=='active'&&!reason)throw new Error(to==='blocked'?'سبب الحظر مطلوب.':'سبب الإيقاف مطلوب.');
+      if(to==='active'&&from==='active')throw new Error('الحساب فعال بالفعل.');
+      c.status=to;c.restrictions=restr;c.statusReason=to==='active'?null:reason;c.statusChangedAt=now();c.statusChangedBy=adminId;
+      return{entityType:'customer',entityId:c.id,summary:`تغيير حالة العميل ${c.accountId||c.id} من ${from} إلى ${to}`,details:{from,to,reason:reason||null,restrictions:restr,previousRestrictions:previous}};
+    });
+  }
+  const TAG_MAX=24,TAGS_PER_CUSTOMER=20,BATCH_MAX=500;
+  function cleanTag(tag){const t=String(tag||'').trim().replace(/\s+/g,' ');if(!t)throw new Error('اكتب اسم الوسم.');if(t.length>TAG_MAX)throw new Error(`الوسم أطول من ${TAG_MAX} حرفًا.`);return t;}
+  function targetCustomers(db,ids){
+    const list=[...new Set((Array.isArray(ids)?ids:[ids]).map(String).filter(Boolean))];
+    if(!list.length)throw new Error('حدد عميلًا واحدًا على الأقل.');if(list.length>BATCH_MAX)throw new Error(`الحد الأقصى ${BATCH_MAX} عميل في العملية الواحدة.`);
+    const found=list.map(id=>db.customers.find(x=>x.id===id));
+    if(found.some(c=>!c||c.status==='deleted'))throw new Error('بعض العملاء المحددين غير موجودين؛ لم يُحفظ أي تغيير.');
+    return found;
+  }
+  // ذرّية: إن فشل عميل واحد لا يُحفظ أي تغيير (الخطأ يمنع الكتابة كلها)
+  async function addCustomerTags(adminId,customerIds,tag){
+    return transact(adminId,'customer_tags_added',db=>{
+      const t=cleanTag(tag),targets=targetCustomers(db,customerIds);let changed=0;
+      for(const c of targets){c.tags=safeArray(c.tags).map(String);if(c.tags.some(x=>x.toLocaleLowerCase()===t.toLocaleLowerCase()))continue;if(c.tags.length>=TAGS_PER_CUSTOMER)throw new Error(`بلغ أحد العملاء الحد الأقصى (${TAGS_PER_CUSTOMER}) من الوسوم؛ لم يُحفظ أي تغيير.`);c.tags.push(t);changed++;}
+      return{entityType:'customer_tags',entityId:null,summary:`إضافة وسم «${t}» إلى ${changed} من ${targets.length} عميلًا`,details:{tag:t,customerIds:targets.map(c=>c.id),changed}};
+    });
+  }
+  async function removeCustomerTag(adminId,customerIds,tag){
+    return transact(adminId,'customer_tag_removed',db=>{
+      const t=cleanTag(tag),targets=targetCustomers(db,customerIds);let changed=0;
+      for(const c of targets){const before=safeArray(c.tags).map(String);c.tags=before.filter(x=>x.toLocaleLowerCase()!==t.toLocaleLowerCase());if(c.tags.length!==before.length)changed++;}
+      return{entityType:'customer_tags',entityId:null,summary:`إزالة وسم «${t}» من ${changed} من ${targets.length} عميلًا`,details:{tag:t,customerIds:targets.map(c=>c.id),changed}};
+    });
+  }
+  // تصنيفات «جديد» و«مميز»: قيمة فارغة = معطّل؛ لا قيم تجارية افتراضية
+  async function saveCustomerClasses(adminId,input={}){
+    const field=(v,max,label)=>{if(v===null||v===undefined||String(v).trim()==='')return null;const n=Number(v);if(!Number.isInteger(n)||n<1||n>max)throw new Error(`${label} يجب أن يكون عددًا صحيحًا بين 1 و${max} أو فارغًا للتعطيل.`);return n;};
+    const next={newWithinDays:field(input.newWithinDays,3650,'مدة «جديد» بالأيام'),premiumMinApprovedOrders:field(input.premiumMinApprovedOrders,10000,'حد الطلبات المعتمدة لـ«مميز»')};
+    return transact(adminId,'customer_classes_saved',db=>{
+      const before={newWithinDays:null,premiumMinApprovedOrders:null,...(db.settings?.customerClasses||{})};
+      db.settings={...(db.settings||{}),customerClasses:next};
+      return{entityType:'settings',entityId:'customerClasses',summary:'حفظ قواعد تصنيف العملاء (جديد/مميز)',details:{before,after:next}};
+    });
+  }
   async function reviewPurchase(adminId, requestId, decision, note='') {
     if(!['approved','rejected'].includes(decision)) throw new Error('قرار الطلب غير صالح.');
     return transact(adminId,decision==='approved'?'purchase_approved':'purchase_rejected',db=>{
@@ -242,6 +305,7 @@
     days=Number(days);
     return transact(customerId,'subscription_activated_or_extended',db=>{
       if(idempotencyKey&&db.idempotencyKeys.some(x=>x.customerId===customerId&&x.key===idempotencyKey))throw new Error('تم تنفيذ هذا التأكيد بالفعل؛ لم يُخصم رصيد إضافي.');
+      assertAllowed(db.customers.find(x=>x.id===customerId),'protection');
       const n=ownedNumber(db,customerId,numberId),co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);if(!co)throw new Error('شركة الرقم غير متاحة.');if(!Number.isInteger(days)||!(co.durations||[]).includes(days))throw new Error('مدة الاشتراك غير صالحة وفق مدد الشركة.');
       const rate=Number(co.dailyRate);if(!Number.isFinite(rate)||rate<=0)throw new Error('تعرفة الشركة غير صالحة.');
       const cost=rate*days;if(!Number.isSafeInteger(cost))throw new Error('تكلفة الاشتراك غير صالحة.');
@@ -326,8 +390,10 @@
   async function saveProtectionPackage(adminId,input){return transact(adminId,'protection_package_saved',db=>{const p={id:input.id||uid('protpkg'),companyId:String(input.companyId||''),name:String(input.name||'').trim(),days:Number(input.days),pointsCost:Number(input.pointsCost),active:input.active!==false};if(!p.name||!db.companies.some(c=>c.id===p.companyId)||!Number.isInteger(p.days)||p.days<=0||!Number.isInteger(p.pointsCost)||p.pointsCost<=0)throw new Error('اسم باقة الحماية والشركة والمدة والتكلفة بالنقاط حقول مطلوبة وصحيحة.');const i=db.protectionPackages.findIndex(x=>x.id===p.id);if(i<0)db.protectionPackages.push(p);else db.protectionPackages[i]=p;return{entityType:'protection_package',entityId:p.id,summary:`حفظ باقة الحماية ${p.name}`};});}
   async function performProtectionOperation(customerId,numberId,packageId,operationType,idempotencyKey=''){
     if(!['subscribe','extend','renew'].includes(operationType))throw new Error('نوع عملية الحماية غير صالح.');
+    assertAllowed(read().customers.find(x=>x.id===customerId),'protection');
     if(operationType==='renew'){const snap=read(),n=snap.numbers.find(x=>x.id===numberId||digitsOnly(x.number)===digitsOnly(numberId)),latest=n&&snap.subscriptions.filter(x=>x.numberId===n.id).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];if(latest&&latest.customerId===customerId&&new Date(latest.endsAt)<=Date.now()){const next=snap.tasks.filter(t=>t.subscriptionId===latest.id&&['due','planned'].includes(t.status)).sort((a,b)=>new Date(a.dueAt)-new Date(b.dueAt))[0],deadline=next?new Date(next.dueAt).getTime():new Date(latest.endsAt).getTime();if(Date.now()>deadline){await transact(customerId,'number_restricted_for_late_renewal',db=>{const target=db.numbers.find(x=>x.id===n.id);if(target){target.restricted=true;target.restrictionReason='تجاوز موعد التجديد المسموح المرتبط بالخطة';target.restrictedAt=now();}return{entityType:'number',entityId:n.id,summary:'تقييد الرقم لتجاوز حد التجديد'};});throw new Error('انتهت مهلة التجديد وفق موعد المهمة التالية؛ قُيّد الرقم ويلزم رفع القيد من الإدارة.');}}}
     return transact(customerId,`protection_${operationType}`,db=>{
+      assertAllowed(db.customers.find(x=>x.id===customerId),'protection');
       if(idempotencyKey&&db.idempotencyKeys.some(x=>x.customerId===customerId&&x.key===idempotencyKey))throw new Error('تم تنفيذ هذا التأكيد بالفعل؛ لم يُخصم رصيد إضافي.');
       let n=db.numbers.find(x=>x.id===numberId||digitsOnly(x.number)===digitsOnly(numberId));if(!n&&/^\d+$/.test(digitsOnly(numberId))&&operationType==='subscribe'){const digits=digitsOnly(numberId),co=companyFor(digits,db);if(!validPhone(digits,co))throw new Error('تعذر تحديد شركة أو طول صالح لهذا الرقم.');n={id:uid('num'),customerId:null,number:digits,companyId:co.id,addedAt:now(),status:'active'};db.numbers.push(n);}if(!n)throw new Error('هذا الإجراء غير متاح لهذا الرقم.');if(operationType==='renew'&&db.subscriptions.some(x=>x.numberId===n.id&&x.customerId!==customerId))throw new Error('لا يملك هذا الحساب سجل الحماية المطلوب تجديده.');if(n.restricted)throw new Error('الرقم مقيّد؛ راجع الإدارة.');const co=db.companies.find(c=>c.id===n.companyId&&c.active!==false);if(!co)throw new Error('شركة الرقم غير متاحة.');
       const p=db.protectionPackages.find(x=>x.id===packageId&&x.companyId===co.id&&x.active!==false);if(!p)throw new Error('باقة الحماية غير متاحة لهذه الشركة.');
@@ -371,7 +437,7 @@
   }
   async function markNoticeRead(customerId, noticeId) { return transact(customerId,'notification_read',db=>{const n=db.notifications.find(x=>x.id===noticeId&&x.customerId===customerId);if(!n)throw new Error('الإشعار غير موجود لهذا الحساب.');if(!n.readAt)n.readAt=now();return {entityType:'notification',entityId:n.id,summary:'قراءة إشعار محلي'};}); }
   async function updateContent(adminId, key, value) { if(!['terms','privacy','contact','faq'].includes(key))throw new Error('نوع المحتوى غير صالح.');return transact(adminId,'content_updated',db=>{db.content[key]=String(value||'');return {entityType:'content',entityId:key,summary:`تعديل محتوى ${key}`};}); }
-  function readForCustomer(customerId){const db=read(),customer=db.customers.find(c=>c.id===customerId);if(!customer)throw new Error('الحساب غير موجود.');const linked=customerNumbers(db,customerId),ownedSubs=db.subscriptions.filter(x=>x.customerId===customerId);db.customers=[customer];db.numbers=linked.map(n=>{const copy={...n};if(copy.customerId&&copy.customerId!==customerId)copy.customerId=null;copy.radar=radarFor(db,customerId,n);const active=db.subscriptions.find(s=>s.numberId===n.id&&s.status==='active'&&new Date(s.startsAt||0)<=Date.now()&&new Date(s.endsAt)>Date.now());copy.protectionStatus=active?'protected':db.subscriptions.some(s=>s.numberId===n.id)?'expired':'none';copy.liveSub=active?{startsAt:active.startsAt,endsAt:active.endsAt,own:active.customerId===customerId}:null;return copy;});db.subscriptions=ownedSubs;db.tasks=db.tasks.filter(x=>x.customerId===customerId);db.protectionOperations=db.protectionOperations.filter(x=>x.customerId===customerId);db.internalNotes=[];db.messageTemplates=[];db.pointTransactions=db.pointTransactions.filter(x=>x.customerId===customerId);db.purchaseRequests=db.purchaseRequests.filter(x=>x.customerId===customerId);db.notifications=db.notifications.filter(x=>x.customerId===customerId);db.operations=db.operations.filter(x=>x.actorId===customerId||x.customerId===customerId||x.entityId===customerId);db.financeEntries=[];db.admin=null;db.numberLinks=db.numberLinks.filter(x=>x.customerId===customerId);db.idempotencyKeys=db.idempotencyKeys.filter(x=>x.customerId===customerId);return db;}
+  function readForCustomer(customerId){const db=read(),customer=db.customers.find(c=>c.id===customerId);if(!customer)throw new Error('الحساب غير موجود.');const linked=customerNumbers(db,customerId),ownedSubs=db.subscriptions.filter(x=>x.customerId===customerId);const INTERNAL_OPS=['customer_status_changed','customer_tags_added','customer_tag_removed','customer_classes_saved','internal_note_added','internal_note_deleted','template_saved','template_deleted'];const{tags:_t,statusReason:_r,statusChangedAt:_a,statusChangedBy:_b,restrictions:_x,...visible}=customer;db.customers=[visible];delete db.settings;db.numbers=linked.map(n=>{const copy={...n};if(copy.customerId&&copy.customerId!==customerId)copy.customerId=null;copy.radar=radarFor(db,customerId,n);const active=db.subscriptions.find(s=>s.numberId===n.id&&s.status==='active'&&new Date(s.startsAt||0)<=Date.now()&&new Date(s.endsAt)>Date.now());copy.protectionStatus=active?'protected':db.subscriptions.some(s=>s.numberId===n.id)?'expired':'none';copy.liveSub=active?{startsAt:active.startsAt,endsAt:active.endsAt,own:active.customerId===customerId}:null;return copy;});db.subscriptions=ownedSubs;db.tasks=db.tasks.filter(x=>x.customerId===customerId);db.protectionOperations=db.protectionOperations.filter(x=>x.customerId===customerId);db.internalNotes=[];db.messageTemplates=[];db.pointTransactions=db.pointTransactions.filter(x=>x.customerId===customerId);db.purchaseRequests=db.purchaseRequests.filter(x=>x.customerId===customerId);db.notifications=db.notifications.filter(x=>x.customerId===customerId);db.operations=db.operations.filter(x=>(x.actorId===customerId||x.customerId===customerId||x.entityId===customerId)&&!INTERNAL_OPS.includes(x.type)).map(({details,...o})=>o);db.financeEntries=[];db.admin=null;db.numberLinks=db.numberLinks.filter(x=>x.customerId===customerId);db.idempotencyKeys=db.idempotencyKeys.filter(x=>x.customerId===customerId);return db;}
   // الرادار تفضيل خاص بكل عميل ويُحفظ على علاقة الربط لا على سجل الرقم المشترك؛ القيمة القديمة على الرقم تُحترم لمالكه الأصلي فقط.
   function radarFor(db,customerId,n){const link=db.numberLinks.find(l=>l.numberId===n.id&&l.customerId===customerId);if(link&&link.radar!==undefined)return !!link.radar;return !!(n.radar&&n.customerId===customerId);}
   async function setRadar(customerId,numberId,on){
@@ -393,5 +459,5 @@
   }
   function setStorageForTests(s) { injectedStorage=s; }
   function exportJSON() { return JSON.stringify(read(),null,2); }
-  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,cancelPurchase,duplicateReferences,numberHolders,saveTemplate,deleteTemplate,addInternalNote,deleteInternalNote,setPasswordHash,deleteAccount,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
+  return {KEY,seedData,read,readForCustomer,customerNumbers:(customerId,d=read())=>customerNumbers(d,customerId),transact,balance,balanceFrom,isSubscriber,companyFor,normalizePhone,validPhone,activeSubscription,addNumber,createPurchase,cancelPurchase,duplicateReferences,numberHolders,saveTemplate,deleteTemplate,addInternalNote,deleteInternalNote,setPasswordHash,deleteAccount,restrictionsOf,canLogin,LOGIN_BLOCKED_MESSAGE,setCustomerStatus,addCustomerTags,removeCustomerTag,saveCustomerClasses,reviewPurchase,activateSubscription,performProtectionOperation,executeTask,rescheduleTask,addFinancialEntry,saveCompany,saveTaskSettings,searchNumberStatus,savePackage,saveProtectionPackage,savePaymentMethod,sendLocalNotice,markNoticeRead,setRadar,updateContent,reverseFinancialEntry,setStorageForTests,exportJSON,uid,now,datePlus};
 });
