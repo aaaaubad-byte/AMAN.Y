@@ -2,7 +2,7 @@
    كل الكتابة تمر عبر AmanData (المخزن المحلي AMAN_SHARED_REGISTRY_V2)؛ لا منطق أعمال هنا. */
 (function () {
   'use strict';
-  const D = AmanData, U = AmanUI, K = AmanAdminKit, M = AmanAdminModel, S = AmanAdminScreens;
+  const D = AmanData, U = AmanUI, K = AmanAdminKit, M = AmanAdminModel, S = AmanAdminScreens, X = AmanExpiry, EX = AmanAdminExpiry;
   const E = K.esc, N = U.fmt, $ = s => document.querySelector(s);
   const ADMIN = 'admin-demo';
   const TABS = [['home', 'الرئيسية', 'home'], ['requests', 'الطلبات', 'receipt'], ['tasks', 'المهام', 'tasks'], ['customers', 'العملاء', 'users'], ['more', 'المزيد', 'grid']];
@@ -37,7 +37,7 @@
   // رابط فيه % مشوّه لا يجوز أن يكسر التطبيق: يُعامَل كمسار غير معروف فيعود إلى الرئيسية
   const hashRoute = () => { try { return decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'home'; } catch { return 'home'; } };
   const histState = () => (history.state && history.state.amanAdmin ? history.state : null);
-  const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+|customer-classes)$/.test(r);
+  const isForm = r => /^(company\/(new|[^/]+\/(edit|tasks))|package\/(new|[^/]+\/edit)|protection\/(new|[^/]+\/edit)|payment\/(new|[^/]+\/edit)|content\/[^/]+|customer-classes|expiry\/[^/]+\/class\/[^/]+)$/.test(r);
   function parentOf(r) {
     const [n, a, b] = r.split('/');
     if (n === 'request') return 'requests/pending';
@@ -50,7 +50,8 @@
     if (n === 'protection' && a) return b === 'edit' ? `protection/${a}` : 'protection';
     if (n === 'payment') return b === 'edit' ? `payment/${a}` : 'payments';
     if (n === 'content' && a) return 'content';
-    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance', 'unrecorded', 'templates', 'customer-classes'].includes(n)) return 'more';
+    if (n === 'expiry') return b === 'class' ? `expiry/${a}` : a ? 'expiry' : 'more';
+    if (['companies', 'task-settings', 'packages', 'protection', 'payments', 'notices', 'content', 'audit', 'account', 'numbers', 'finance', 'unrecorded', 'templates', 'customer-classes', 'expiry-alerts'].includes(n)) return 'more';
     return 'home';
   }
   function saveScroll() { const s = $('#screen'); if (s) ui.scroll[ui.route] = s.scrollTop; }
@@ -102,7 +103,7 @@
       { const els = [...screen.querySelectorAll('input:not([type=checkbox]):not([type=hidden])')]; (els.find(i => !i.value) || els[0])?.focus({ preventScroll: true }); }
       return;
     }
-    const v = S.build(ui.route, d, ui); ui.view = v;
+    const v = EX.build(ui.route, d, ui) || S.build(ui.route, d, ui); ui.view = v;
     let html = v.html;
     if (v.title) html = K.bar(v.title, v.sub || '', v.end || '') + html;
     screen.className = 'screen' + (v.bar ? ' with-bar' : '');
@@ -236,6 +237,12 @@
   function logoutSheet() {
     openSheet('تسجيل الخروج', '<p class="sheet-text">ستنتهي جلسة الإدارة التجريبية على هذا المتصفح. لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary') + K.btn('إلغاء', 'sheet-close'));
   }
+  // حذف تصنيف قرب انتهاء (U11): تأكيد بالأثر؛ لا يمس أي اشتراك أو إشعار سبق إنشاؤه
+  function expiryDeleteSheet(coId, classId) {
+    const d = D.read(), co = M.company(d, coId), k = X.forCompany(d, coId).classes.find(c => c.id === classId);
+    if (!co || !k) return toast('التصنيف غير موجود.', true);
+    openSheet('حذف تصنيف', `<p class="sheet-text">سيُحذف التصنيف ${strong(E(k.name))} من شركة ${strong(E(co.name))}؛ لن تظهر شارته ولا فلتره بعد الآن، ولن يُنشأ إشعار جديد له. لا يتأثر أي اشتراك ولا إشعار سبق إنشاؤه. لا يمكن التراجع عن الحذف، ويمكنك إعادة إضافة التصنيف يدويًا.</p>${errBox}`, K.btn('تأكيد الحذف', 'exp-class-delete-confirm', 'primary', `data-confirm data-co="${E(coId)}" data-id="${E(classId)}"`) + K.btn('إلغاء', 'sheet-close'));
+  }
 
   /* ===================== معالجة النقر ===================== */
 
@@ -361,6 +368,13 @@
           toast('تم تنزيل نسخة البيانات المحلية. احتفظ بها في مكان خاص وآمن.'); return;
         }
         case 'demo-seed': await run(seedDemo); return;
+        /* ----- تصنيفات قرب الانتهاء (U11، ق-1) ----- */
+        case 'exp-class-delete-open': expiryDeleteSheet(b.dataset.co, id); return;
+        case 'exp-class-delete-confirm': await run(async () => { await X.deleteClass(D, ADMIN, b.dataset.co, id); closeSheet(); toast('حُذف التصنيف وسُجل الحدث.'); back(); }); return;
+        case 'exp-evaluate': await run(async () => {
+          const r = await EX.evaluate(ADMIN); render();
+          toast(r.created ? `أُنشئ ${N(r.created)} إشعار قرب انتهاء للعملاء.` : 'لا توجد إشعارات مستحقة؛ لا تُكرَّر إشعارات سبق إنشاؤها.');
+        }); return;
       }
     } catch (x) { toast(x.message || 'تعذرت العملية ولم تُحفظ.', true); }
   });
@@ -396,7 +410,7 @@
       if (email !== 'admin@aman.test' || password !== 'admin1234') { clearFieldErrors(); setFieldError('l_pass', 'بيانات الإدارة التجريبية غير صحيحة.'); document.getElementById('l_pass')?.focus(); return; }
       saveRememberedCredentials('admin', email, remember);
       sessionStorage.setItem('aman.admin', '1'); ui.logged = true;
-      history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); return;
+      history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); ui.route = 'home'; render({ top: true }); evaluateExpiry(); return;
     }
     await run(async () => {
       switch (kind) {
@@ -425,6 +439,7 @@
           toast(`${add ? 'أُضيف' : 'أُزيل'} الوسم «${tag}» (${N(ids.length)} عميلًا).`, false, { fn: () => restoreTags(prev) }); return;
         }
         case 'customer-classes-form': await D.saveCustomerClasses(ADMIN, { newWithinDays: fd.get('newWithinDays'), premiumMinApprovedOrders: fd.get('premiumMinApprovedOrders') }); toast('حُفظت قواعد التصنيف وسُجلت بالقيم قبل وبعد.'); back(); return;
+        case 'expiry-class-form': await X.saveClass(D, ADMIN, fd.get('companyId'), { id: fd.get('id') || undefined, name: fd.get('name'), upToDays: fd.get('upToDays'), notify: fd.has('notify'), noticeText: fd.get('noticeText') }); toast('حُفظ التصنيف وسُجل الحدث.'); back(); return;
         default: throw new Error('تعذر العثور على النموذج.');
       }
     });
@@ -434,6 +449,12 @@
   document.addEventListener('input', e => { if (e.target.id === 'q') { ui.q = e.target.value; ui.limit = 0; refreshList(); } });
   document.addEventListener('change', async e => {
     const t = e.target;
+    // ربط التجديد التلقائي بتصنيف (U11): إعداد محفوظ لكل شركة، يُحفظ فور الاختيار، ولا يُنفَّذ به أي تجديد
+    if (t.dataset?.expiryAutorenew !== undefined) {
+      const ok = await run(async () => { await X.setAutoRenewClass(D, ADMIN, t.dataset.company, t.value); render(); toast(t.value ? 'رُبط التجديد التلقائي بالتصنيف المختار (إعداد فقط، لا يُنفَّذ تجديد).' : 'عُطّل ربط التجديد التلقائي لهذه الشركة.'); });
+      if (!ok) render();
+      return;
+    }
     if (t.id === 'flt') { ui.filter = t.value; ui.limit = 0; refreshList(); return; }
     if (t.name === 'status' && t.closest('#sheet-form')) { syncStatusForm(); return; }
     if (t.name === 'audience' && t.closest('#sheet-form')) { $('#notice-customer')?.classList.toggle('hidden', t.value !== 'customer'); return; }
@@ -499,8 +520,16 @@
   window.addEventListener('storage', e => { if (e.key === D.KEY && ui.logged && !ui.sheet && !isForm(ui.route)) render(); });
   window.addEventListener('pageshow', () => { if (!ui.sheet && !isForm(ui.route)) render(); });
 
+  /* تقييم إشعارات قرب الانتهاء (U11، ق-1): لا مجدول خلفي، فيجري عند فتح الإدارة وبعد الدخول وبزر «إعادة التقييم الآن».
+     يكتب فقط إن وُجد مستحق، ولا يكرر إشعارًا أُنشئ سابقًا؛ الفشل صامت (لا يمنع العمل) ويُعاد المحاولة في الفتح التالي. */
+  function evaluateExpiry() {
+    if (!ui.logged) return;
+    EX.evaluate('system').then(r => { if (r.created && ui.logged && !ui.sheet && !isForm(ui.route)) render(); }).catch(() => {});
+  }
+
   /* ===================== الإقلاع ===================== */
   ui.route = ui.logged ? hashRoute() : 'home';
   if (!histState()) history.replaceState({ amanAdmin: true, route: ui.route, d: 0 }, '', '#/' + ui.route);
   render({ top: true });
+  evaluateExpiry();
 })();
