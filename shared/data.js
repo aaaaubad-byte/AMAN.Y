@@ -42,7 +42,8 @@
       financeEntries: [], notifications: [], idempotencyKeys: [],
       notificationSettings: { subscriptionExpiring: true, purchaseStatus: true, taskUpdates: true, protectionUpdates: true },
       admin: { id: 'admin-local', name: 'مدير النظام', email: 'admin@aman.test', darkMode: false, lockEnabled: false },
-      content: { terms: '', privacy: '', contact: '', faq: '' }
+      content: { terms: '', privacy: '', contact: '', faq: '' },
+      settings: { customerClasses: { newWithinDays: null, premiumMinApprovedOrders: null } }
     };
   }
 
@@ -54,10 +55,11 @@
     for(const k of collections){if(d[k]===undefined)d[k]=[];else if(!Array.isArray(d[k]))throw new Error(`بنية مجموعة ${k} غير صالحة؛ لم تُستبدل البيانات.`);}
     if(!d.admin)d.admin={id:'admin-demo',name:'مدير تجريبي',email:'admin@aman.test',darkMode:false,lockEnabled:false};
     d.content={terms:'',privacy:'',contact:'',faq:'',...(d.content||{})};
+    d.settings={...(d.settings||{}),customerClasses:{newWithinDays:null,premiumMinApprovedOrders:null,...(d.settings?.customerClasses||{})}};
     if(!Array.isArray(d.internalNotes))d.internalNotes=[];
     if(!Array.isArray(d.messageTemplates))d.messageTemplates=DEFAULT_TEMPLATES.map(t=>({...t}));
     d.notificationSettings={subscriptionExpiring:true,purchaseStatus:true,taskUpdates:true,protectionUpdates:true,...(d.notificationSettings||{})};
-    d.customers.forEach((c,i)=>{c.id ||= `legacy-customer-${i+1}`;c.accountId ||= c.id;c.status ||= 'active';c.isSubscriber=Boolean(c.isSubscriber||c.firstPurchaseApproved||d.purchaseRequests.some(r=>r.customerId===c.id&&['approved','معتمد','مكتملة'].includes(r.status)));});
+    d.customers.forEach((c,i)=>{c.id ||= `legacy-customer-${i+1}`;c.accountId ||= c.id;c.status ||= 'active';c.tags=safeArray(c.tags).map(String);c.isSubscriber=Boolean(c.isSubscriber||c.firstPurchaseApproved||d.purchaseRequests.some(r=>r.customerId===c.id&&['approved','معتمد','مكتملة'].includes(r.status)));});
     d.companies.forEach((c,i)=>{c.id ||= `legacy-company-${i+1}`;c.name ||= `شركة ${i+1}`;c.prefixes=safeArray(c.prefixes).map(String);c.lengths=safeArray(c.lengths).map(Number);c.dailyRate=Number(c.dailyRate||c.dailyTariff||c.tariff||0);c.durations=safeArray(c.durations).map(Number);if(c.taskSchedule)c.taskSchedule={...c.taskSchedule};c.active=c.active!==false;});
     d.packages.forEach((p,i)=>{p.id ||= `legacy-package-${i+1}`;p.name ||= `باقة ${i+1}`;p.points=Number(p.points||0);p.price=Number(p.price||0);p.active=p.active!==false;});
     d.protectionPackages.forEach((p,i)=>{p.id ||= `legacy-protection-package-${i+1}`;p.name ||= `باقة حماية ${i+1}`;p.companyId ||= d.companies[0]?.id||'';p.days=Number(p.days||p.durationDays||0);p.pointsCost=Number(p.pointsCost||p.costPoints||0);p.active=p.active!==false;});
@@ -121,7 +123,7 @@
     const work = async () => {
       const before=read(), draft=clone(before); const result=mutator(draft);
       draft.revision=before.revision+1; draft.updatedAt=now();
-      if(action) draft.operations.push({id:uid('op'),actorId:actor||'system',type:action,entityType:result?.entityType||'system',entityId:result?.entityId||null,result:'success',createdAt:now(),summary:result?.summary||action});
+      if(action) draft.operations.push({id:uid('op'),actorId:actor||'system',type:action,entityType:result?.entityType||'system',entityId:result?.entityId||null,result:'success',createdAt:now(),summary:result?.summary||action,...(result?.details?{details:result.details}:{})});
       validate(draft); writeDirect(draft); return {db:clone(draft),result};
     };
     if (typeof navigator!=='undefined' && navigator.locks?.request) return navigator.locks.request(LOCK,{mode:'exclusive'},work);
