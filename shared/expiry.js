@@ -188,6 +188,19 @@
     });
     return { created };
   }
+  // تنبيهات الإدارة (بند 85): كل اشتراك ساري داخل تصنيف عبر كل الشركات، الأقرب انتهاءً أولًا، مع حالة إشعاره (أُنشئ أم لا).
+  // تُحسب عند الطلب فقط؛ لا مجدول خلفي ولا كتابة.
+  function alerts(D, db, at = Date.now()) {
+    const sent = new Set((db.notifications || []).map(n => n.dedupeKey).filter(Boolean)), out = [];
+    for (const co of db.companies || []) {
+      for (const e of entries(D, db, co.id, at)) {
+        if (!e.result.cls) continue;
+        const key = noticeKey(e.sub, e.result.cls);
+        out.push({ company: co, number: e.number, sub: e.sub, days: e.result.days, cls: e.result.cls, key, sent: sent.has(key) });
+      }
+    }
+    return out.sort((a, b) => a.days - b.days);
+  }
 
-  return { NAME_MAX, NOTICE_MAX, daysLeft, cleanClasses, forCompany, saveClass, deleteClass, setAutoRenewClass, classify, resultFor, badge, filterOptions, matches, entries, publicClassesMap, pendingNotices, evaluate };
+  return { NAME_MAX, NOTICE_MAX, daysLeft, cleanClasses, forCompany, saveClass, deleteClass, setAutoRenewClass, classify, resultFor, badge, filterOptions, matches, entries, publicClassesMap, noticeKey, pendingNotices, evaluate, alerts };
 });
