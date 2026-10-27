@@ -10,7 +10,7 @@
   'use strict';
   const COLLECTIONS = ['customers', 'companies', 'packages', 'protectionPackages', 'paymentMethods', 'purchaseRequests', 'numbers', 'numberLinks', 'subscriptions', 'protectionOperations', 'pointTransactions', 'tasks', 'operations', 'financeEntries', 'notifications', 'idempotencyKeys'];
   const EXTRA = ['internalNotes', 'messageTemplates'];
-  const SETTINGS_TYPES = ['company_saved', 'package_saved', 'protection_package_saved', 'payment_method_saved', 'task_settings_saved', 'content_updated', 'customer_classes_saved', 'expiry_class_saved', 'expiry_class_deleted', 'expiry_autorenew_class_saved', 'admin_setting_changed', 'template_saved', 'template_deleted', 'daily_close', 'daily_close_reopened', 'backup_imported', 'admin_password_changed', 'backup_reminder_saved', 'trash_restored'];
+  const SETTINGS_TYPES = ['company_saved', 'package_saved', 'protection_package_saved', 'payment_method_saved', 'task_settings_saved', 'content_updated', 'customer_classes_saved', 'expiry_class_saved', 'expiry_class_deleted', 'expiry_autorenew_class_saved', 'autorenew_company_saved', 'promotion_saved', 'promotion_deleted', 'coupon_saved', 'coupon_deleted', 'admin_setting_changed', 'template_saved', 'template_deleted', 'daily_close', 'daily_close_reopened', 'backup_imported', 'admin_password_changed', 'backup_reminder_saved', 'trash_restored'];
   const MAX_IMPORT = 20 * 1024 * 1024, TRASH_MAX = 100, PASSWORD_MIN = 8;
   const arr = x => (Array.isArray(x) ? x : []);
   const setSettings = (db, patch) => { db.settings = { ...(db.settings || {}), ...patch }; };

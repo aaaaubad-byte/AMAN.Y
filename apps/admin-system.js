@@ -32,7 +32,7 @@
   function integrity(d) {
     const list = Sys.checkIntegrity(d);
     if (!list.length) return view('فحوص السلامة', 'سليمة', K.empty('لم تُرصد أي مشكلة في العلاقات أو الأرصدة أو القيود.', 'shield', 'البيانات سليمة'));
-    return view('فحوص السلامة', `${N(list.length)} ملاحظة`, `${K.note('الفحص للقراءة فقط ولا يصلح شيئًا تلقائيًا. صدّر نسخة قبل أي معالجة يدوية.')}${K.card(list.slice(0, 100).map(i => K.row({ icon: i.level === 'error' ? 'info' : 'clock', tone: i.level === 'error' ? 'warn' : '', title: E(i.message), sub: i.ref ? `المرجع: ${E(i.ref)}` : '', pill: K.pill(i.level === 'error' ? 'خطأ' : 'تنبيه', i.level === 'error' ? 'bad' : 'warn'), plain: true })))}${list.length > 100 ? K.note(`عُرضت أول 100 من ${N(list.length)}.`) : ''}`);
+    return view('فحوص السلامة', `${N(list.length)} ملاحظة`, `${K.note('الفحص للقراءة فقط ولا يصلح شيئًا تلقائيًا. صدّر نسخة قبل أي معالجة يدوية.')}${K.card(list.slice(0, 100).map(i => K.row({ icon: i.level === 'error' ? 'info' : 'clock', tone: i.level === 'error' ? 'warn' : '', title: (i.message), sub: i.ref ? `المرجع: ${E(i.ref)}` : '', pill: K.pill(i.level === 'error' ? 'خطأ' : 'تنبيه', i.level === 'error' ? 'bad' : 'warn'), plain: true })))}${list.length > 100 ? K.note(`عُرضت أول 100 من ${N(list.length)}.`) : ''}`);
   }
   function backup(d) {
     const bk = Sys.backupStatus(d);
@@ -55,17 +55,17 @@ ${K.section('تفصيل المجموعات')}${K.card(rows)}
   const RK = [['7d', 'آخر 7 أيام'], ['30d', 'آخر 30 يومًا'], ['month', 'هذا الشهر'], ['lastMonth', 'الشهر الماضي']];
   function reconcile(d, route) {
     const key = RK.some(r => r[0] === route.split('/')[2]) ? route.split('/')[2] : '30d', rg = R.rangeFor(key), rec = Sys.reconcile(d, rg.from, rg.to, R.dayKey);
-    const rows = rec.rows.map(m => K.row({ icon: 'wallet', tone: m.diff ? 'warn' : 'ok', title: E(m.name), sub: `معتمد ${N(m.approved.n)} (${money(m.approved.amount)}) · معلق ${N(m.pending.n)} · مرفوض ${N(m.rejected.n)}`, sub2: `الإيراد المسجل ${money(m.revenue)}`, pill: m.diff ? K.pill(`فرق ${money(m.diff)}`, 'bad') : K.pill('مطابق', 'ok'), plain: true }));
-    const iss = rec.issues.slice(0, 50).map(i => K.row({ icon: 'info', tone: 'warn', title: E(i.message), sub: `الطلب: ${E(i.requestId)}`, to: `request/${i.requestId}` }));
+    const rows = rec.rows.map(m => K.row({ icon: 'wallet', tone: m.diff ? 'warn' : 'ok', title: (m.name), sub: `معتمد ${N(m.approved.n)} (${money(m.approved.amount)}) · معلق ${N(m.pending.n)} · مرفوض ${N(m.rejected.n)}`, sub2: `الإيراد المسجل ${money(m.revenue)}`, pill: m.diff ? K.pill(`فرق ${money(m.diff)}`, 'bad') : K.pill('مطابق', 'ok'), plain: true }));
+    const iss = rec.issues.slice(0, 50).map(i => K.row({ icon: 'info', tone: 'warn', title: (i.message), sub: `الطلب: ${E(i.requestId)}`, to: `request/${i.requestId}` }));
     return view('مطابقة المدفوعات', `${rg.from} ← ${rg.to}`, `<div class="tpl-chips" role="group">${RK.map(([k, l]) => chip(l, 'fin-nav', `data-to="system/reconcile/${k}"`, k === key)).join('')}</div>${K.metrics([['معتمد', money(rec.totals.approved)], ['إيراد مسجل', money(rec.totals.revenue)], ['الفرق', money(rec.totals.approved - rec.totals.revenue)]])}${rows.length ? K.card(rows) : K.empty('لا توجد طلبات شراء في النطاق.', 'wallet')}${iss.length ? K.section('ملاحظات للمراجعة', N(rec.issues.length)) + K.card(iss) : ''}${K.note('المطابقة للقراءة فقط: تقارن حالة الطلب بقيد الإيراد المرتبط به. لا تؤكد وصول التحويل الفعلي في وسيلة الدفع.')}`);
   }
   function settingsLog(d) {
     const log = Sys.settingsLog(d);
-    return view('سجل تغييرات الإعدادات', `${N(log.length)} حدث`, log.length ? K.card(log.map(o => K.row({ icon: 'clock', title: E(o.summary || o.type), sub: E(stamp(o.createdAt)), sub2: `المنفِّذ: ${E(o.actorId || '—')}`, plain: true }))) : K.empty('لم تُسجَّل تغييرات إعدادات بعد.', 'clock', 'لا توجد أحداث'));
+    return view('سجل تغييرات الإعدادات', `${N(log.length)} حدث`, log.length ? K.card(log.map(o => K.row({ icon: 'clock', title: (o.summary || o.type), sub: E(stamp(o.createdAt)), sub2: `المنفِّذ: ${E(o.actorId || '—')}`, plain: true }))) : K.empty('لم تُسجَّل تغييرات إعدادات بعد.', 'clock', 'لا توجد أحداث'));
   }
   function trash(d) {
     const list = Sys.trashList(d);
-    return view('سلة المحذوفات', `${N(list.length)} عنصر`, list.length ? `${K.note('تُحفظ هنا القوالب والملاحظات الداخلية وتصنيفات قرب الانتهاء المحذوفة (حتى 100 عنصر). تُستعاد كنسخة جديدة إن لم يوجد تعارض.')}${K.card(list.map(t => K.row({ icon: 'repeat', title: E(t.label || KIND[t.kind] || t.kind), sub: `${E(KIND[t.kind] || t.kind)} · ${E(stamp(t.deletedAt))}`, plain: true }) + `<div class="rowfoot">${K.btn('استعادة', 'sys-restore', 'small', `data-id="${E(t.id)}"`)}${K.btn('حذف نهائي', 'sys-purge', 'small', `data-id="${E(t.id)}"`)}</div>`))}` : K.empty('لا توجد عناصر محذوفة.', 'repeat', 'السلة فارغة'));
+    return view('سلة المحذوفات', `${N(list.length)} عنصر`, list.length ? `${K.note('تُحفظ هنا القوالب والملاحظات الداخلية وتصنيفات قرب الانتهاء المحذوفة (حتى 100 عنصر). تُستعاد كنسخة جديدة إن لم يوجد تعارض.')}${K.card(list.map(t => K.row({ icon: 'repeat', title: (t.label || KIND[t.kind] || t.kind), sub: `${E(KIND[t.kind] || t.kind)} · ${E(stamp(t.deletedAt))}`, plain: true }) + `<div class="rowfoot">${K.btn('استعادة', 'sys-restore', 'small', `data-id="${E(t.id)}"`)}${K.btn('حذف نهائي', 'sys-purge', 'small', `data-id="${E(t.id)}"`)}</div>`))}` : K.empty('لا توجد عناصر محذوفة.', 'repeat', 'السلة فارغة'));
   }
   function password(d) {
     return view('كلمة مرور الإدارة', '', `${K.callout('info', 'تنبيه', small('كلمة المرور تُخزَّن مجزأة (PBKDF2) على هذا الجهاز فقط، ولا تُحفظ نصًا صريحًا. الدخول الإداري في هذه المعاينة محلي وليس أمنًا حقيقيًا للإنتاج.'))}${K.fields(K.field({ name: 'cur', label: 'كلمة المرور الحالية', type: 'password' }) + K.field({ name: 'new', label: `كلمة المرور الجديدة (${Sys.PASSWORD_MIN} خانات فأكثر)`, type: 'password' }) + K.field({ name: 'conf', label: 'تأكيد كلمة المرور الجديدة', type: 'password' }))}<div style="margin-top:10px">${K.btn('تغيير كلمة المرور', 'sys-pw', 'primary', '', 'lock')}</div>`);
