@@ -15,7 +15,17 @@
   const byNew = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
   const notices = (d, id) => d.notifications.filter(n => n.customerId === id).sort(byNew);
 
-  const NEAR_DAYS = 7; // مؤقت: حد «ينتهي قريبًا». يُضبط إداريًا في U11؛ لا يغيّر أي بيانات.
+  /* تصنيفات قرب الانتهاء (U11، ق-1): لكل شركة تصنيفاتها (الاسم والحد فقط عبر AmanExpiry.publicClassesMap).
+     لا حد افتراضي: الشركة بلا تصنيفات لا تظهر لها شارة «قرب الانتهاء». الخريطة تُحسب مرة لكل نسخة بيانات. */
+  const classMemo = new WeakMap();
+  function classesOf(d, n) {
+    const X = root.AmanExpiry;
+    if (!X || !X.publicClassesMap) return [];
+    try {
+      if (!classMemo.has(d)) classMemo.set(d, X.publicClassesMap(D));
+      return classMemo.get(d)[n.companyId] || [];
+    } catch { return []; }
+  }
   // نافذة الاشتراك السارية للرقم: اشتراك العميل نفسه، أو اشتراك عميل آخر لرقم يتابعه (تواريخ فقط بلا هوية المالك)
   function liveInfo(d, n, id) {
     const s = liveSub(d, n, id);
@@ -24,7 +34,13 @@
   }
   function numberState(d, n, id) {
     const i = liveInfo(d, n, id);
-    if (i) { const left = daysLeft(i), near = left <= NEAR_DAYS; return { key: 'active', text: `متبقي ${N(left)} يوم`, tone: near ? 'warn' : 'ok', sub: i, own: i.own, near, left }; }
+    if (i) {
+      const left = daysLeft(i), X = root.AmanExpiry;
+      let cls = null;
+      if (X && X.classify) { try { cls = X.classify(classesOf(d, n), { status: 'active', startsAt: i.startsAt, endsAt: i.endsAt }).cls || null; } catch { cls = null; } }
+      const near = !!cls;
+      return { key: 'active', text: `متبقي ${N(left)} يوم`, tone: near ? 'warn' : 'ok', sub: i, own: i.own, near, cls, left };
+    }
     if (n.protectionStatus === 'protected') return { key: 'protected', text: 'محمي', tone: 'ok' };
     if (n.protectionStatus === 'expired' || d.subscriptions.some(x => x.numberId === n.id)) return { key: 'expired', text: 'منتهية', tone: 'warn' };
     return { key: 'none', text: 'غير محمي', tone: '' };
@@ -115,11 +131,11 @@
   // صف اشتراك: الرقم والشركة وشارة الأيام وشريط التقدم وتاريخ الانتهاء (بنود 28، 40، 41)
   function subRow(d, n, id) {
     const st = numberState(d, n, id), co = company(d, n), live = st.key === 'active';
-    const pill = live ? K.pill(st.near ? `ينتهي قريبًا · ${N(st.left)} يوم` : `${N(st.left)} يوم متبقٍ`, st.tone) : K.pill('منتهٍ', 'warn');
+    const pill = live ? K.pill(st.near ? `${E(st.cls.name)} · ${N(st.left)} يوم` : `${N(st.left)} يوم متبقٍ`, st.tone) : K.pill('منتهٍ', 'warn');
     const meta = live ? `${progress(st.sub)}<span class="subline">ينتهي ${U.date(st.sub.endsAt)}${st.own ? '' : ' · متابعة فقط'}</span>` : '<span class="subline">انتهى الاشتراك ويمكن تجديده</span>';
     return K.row({ icon: 'shield', tone: live ? st.tone : 'warn', title: n.number, ltr: true, sub: E(co?.name || 'شركة غير معروفة'), sub2: meta, pill, act: 'number-detail', attrs: `data-id="${E(n.id)}"` });
   }
-  // أرقام يملك العميل اشتراكها وهي منتهية أو قريبة الانتهاء: مرشحة للتجديد/التمديد من البطاقة (بنود 17 و86)
+  // أرقام يملك العميل اشتراكها وهي منتهية أو داخل تصنيف قرب الانتهاء: مرشحة للتجديد/التمديد من البطاقة (بنود 17 و86)
   function renewable(d, c) {
     return owned(d, c.id).map(n => ({ n, st: numberState(d, n, c.id) })).filter(({ st }) => st.key === 'expired' || (st.key === 'active' && st.own && st.near)).map(({ n, st }) => ({ n, op: st.key === 'expired' ? 'renew' : 'extend' }));
   }
