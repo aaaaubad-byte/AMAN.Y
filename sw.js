@@ -2,7 +2,7 @@
  * لا يعترض أي طلب غير GET ولا أي طلب خارج الأصل، ولا يخزّن بيانات أو استجابات عمليات.
  * الاستراتيجية: الشبكة أولًا مع تحديث النسخة المخزنة، والرجوع للمخزن عند انقطاع الاتصال.
  * عند تغيير أي أصل ثابت يُرفع رقم VERSION ليُنشأ مخزن جديد ويُحذف القديم عند التفعيل. */
-const VERSION = 'aman-static-v3';
+const VERSION = 'aman-static-v4';
 const PRECACHE = [
   'index.html',
   'apps/customer.html', 'apps/customer.css', 'apps/customer.js', 'apps/customer-kit.js', 'apps/customer-screens.js',
