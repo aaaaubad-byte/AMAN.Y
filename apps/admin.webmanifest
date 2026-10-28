@@ -1,0 +1,18 @@
+{
+  "id": "admin.html",
+  "name": "أمان | الإدارة",
+  "short_name": "أمان الإدارة",
+  "description": "تطبيق الإدارة — مرجع المعاينة المحلية",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "admin.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f3f2",
+  "theme_color": "#f1f3f2",
+  "icons": [
+    { "src": "icons/admin.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
