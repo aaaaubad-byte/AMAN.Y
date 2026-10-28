@@ -11,8 +11,11 @@
   "orientation": "portrait",
   "background_color": "#f1f3f2",
   "theme_color": "#f1f3f2",
+  "prefer_related_applications": false,
   "icons": [
     { "src": "icons/admin.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icons/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    { "src": "icons/admin.svg", "sizes": "192x192 512x512", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/maskable-admin.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" },
+    { "src": "icons/maskable-admin.svg", "sizes": "192x192 512x512", "type": "image/svg+xml", "purpose": "maskable" }
   ]
 }
