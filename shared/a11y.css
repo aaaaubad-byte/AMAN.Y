@@ -1,0 +1,44 @@
+/* AMAN — أنماط الوصول واللغة المشتركة (البنود 106 و107). تُحمَّل بعد ملف نمط كل تطبيق. */
+
+/* تركيز واضح للوحة المفاتيح */
+:focus-visible { outline: 3px solid #0b5fff; outline-offset: 2px; }
+body.dark :focus-visible { outline-color: #8ab4ff; }
+[hidden] { display: none !important; }
+
+/* أحجام لمس لا تقل عن 44px */
+button, [role="button"], select, .tile-btn, .copy-mini, .eye, .switch { min-height: 44px; }
+.tile-btn, .copy-mini, .eye { min-width: 44px; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) { min-height: 44px; }
+.switch { min-width: 44px; }
+
+/* رابط التخطّي */
+.skip-link {
+  position: fixed; inset-inline-start: 8px; inset-block-start: -120px; z-index: 1000;
+  padding: 12px 16px; border-radius: 10px; background: #111; color: #fff; font-weight: 700; text-decoration: none;
+}
+.skip-link:focus { inset-block-start: calc(env(safe-area-inset-top, 0px) + 8px); }
+
+/* مبدّل اللغة وزر التثبيت */
+.lang-switch, .pwa-install {
+  position: fixed; z-index: 40; min-width: 44px; min-height: 44px; padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, .25); border-radius: 22px; background: rgba(255, 255, 255, .94); color: #111;
+  font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.lang-switch { inset-block-start: calc(env(safe-area-inset-top, 0px) + 6px); inset-inline-end: 6px; }
+.pwa-install { inset-block-start: calc(env(safe-area-inset-top, 0px) + 56px); inset-inline-end: 6px; }
+body.dark .lang-switch, body.dark .pwa-install { background: rgba(30, 30, 30, .94); color: #fff; border-color: rgba(255, 255, 255, .35); }
+
+/* LTR: العناصر الرقمية والإنجليزية تُقرأ يسارًا ليمين */
+html[dir="ltr"] body { text-align: left; }
+html[dir="ltr"] .ferr, html[dir="ltr"] .note, html[dir="ltr"] .rsub { text-align: left; }
+
+/* تباين أعلى عند الطلب */
+@media (prefers-contrast: more) {
+  :focus-visible { outline-width: 4px; }
+  .lang-switch, .pwa-install { border-width: 2px; border-color: currentColor; }
+}
+
+/* تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
