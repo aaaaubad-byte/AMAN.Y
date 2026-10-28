@@ -169,11 +169,14 @@
     if (s) rows.push(['بداية الاشتراك', U.date(s.startsAt)], ['تاريخ الانتهاء', U.date(s.endsAt)], ['المدة المتبقية', `${N(st.left)} يوم`]);
     const history = follower ? K.note('أنت تتابع هذا الاشتراك ولا تملكه؛ التمديد والتجديد من صاحبه، ويصلك إشعار عند تغيّر حالته إذا فعّلت التنبيهات.')
       : (() => { const ops = (d.protectionOperations || []).filter(o => o.numberId === n.id && o.customerId === id).sort(byNew); return ops.length ? K.section('سجل التجديد') + K.card(ops.map(o => K.row({ icon: 'repeat', title: `${OP_LABEL[o.type] || 'عملية حماية'}${o.packageSnapshot?.name ? ' — ' + E(o.packageSnapshot.name) : ''}`, sub: U.date(o.createdAt), sub2: `حتى ${U.date(o.endsAt)}`, val: `${N(o.pointsCost)} نقطة`, plain: true }))) : ''; })();
-    let foot = '';
-    if (!follower && packs.length) foot += K.btn(op === 'extend' ? 'تمديد الاشتراك' : op === 'renew' ? 'تجديد الاشتراك' : 'تفعيل الاشتراك', 'protection-path', 'primary', `data-number="${E(n.number)}" data-company="${E(co?.id || '')}" data-operation="${op}"`);
-    if (st.key === 'active') foot += K.btn(n.radar ? 'إيقاف تنبيهات تغيّر الحالة' : 'تفعيل تنبيهات تغيّر الحالة', 'radar-toggle', '', `data-id="${E(n.id)}"`, 'bell');
-    foot += K.btn('إشعارات الرقم', 'number-notifications', '', `data-id="${E(n.id)}"`, 'bell');
-    return { title: 'تفاصيل الاشتراك', body: K.kv(rows) + history + (!follower && !packs.length ? K.note('لا توجد باقات حماية متاحة لهذه الشركة حاليًا.') : ''), foot };
+    const foot = !follower && packs.length
+      ? K.btn(op === 'extend' ? 'تمديد الاشتراك' : op === 'renew' ? 'تجديد الاشتراك' : 'تفعيل الاشتراك', 'protection-path', 'primary', `data-number="${E(n.number)}" data-company="${E(co?.id || '')}" data-operation="${op}"`)
+      : '';
+    const secondary = [];
+    if (st.key === 'active') secondary.push(K.btn(n.radar ? 'إيقاف تنبيهات تغيّر الحالة' : 'تفعيل تنبيهات تغيّر الحالة', 'radar-toggle', '', `data-id="${E(n.id)}"`, 'bell'));
+    secondary.push(K.btn('إشعارات الرقم', 'number-notifications', '', `data-id="${E(n.id)}"`, 'bell'));
+    const actions = `<div class="sheet-secondary-actions">${secondary.join('')}</div>`;
+    return { title: 'تفاصيل الاشتراك', body: K.kv(rows) + history + (!follower && !packs.length ? K.note('لا توجد باقات حماية متاحة لهذه الشركة.') : '') + actions, foot };
   }
 
   /* ===================== شراء النقاط والسجلات ===================== */
@@ -286,7 +289,7 @@
     if (kind !== 'request') return { title, body: K.kv(rows) };
     const r = d.purchaseRequests.find(v => v.id === id);
     const reason = r.status === 'rejected' ? K.callout('info', 'سبب الرفض', `<p>${E(r.reviewNote || 'لم تذكر الإدارة سببًا.')}</p>`, false, 'id="rejectReason"') : '';
-    const foot = r.status === 'pending' ? K.btn('إلغاء الطلب', 'order-cancel', '', `data-id="${E(r.id)}"`) : r.status === 'rejected' ? K.btn('إعادة تقديم الطلب', 'order-resubmit', 'primary', `data-id="${E(r.id)}"`) : '';
+    const foot = r.status === 'pending' ? K.btn('إلغاء الطلب', 'order-cancel', 'danger', `data-id="${E(r.id)}"`) : r.status === 'rejected' ? K.btn('إعادة تقديم الطلب', 'order-resubmit', 'primary', `data-id="${E(r.id)}"`) : '';
     return { title, body: requestStages(r) + reason + K.kv(rows), foot };
   }
 

@@ -182,7 +182,7 @@ test('U5: متابعة اشتراك رقم يملكه عميل آخر: التو�
   assert.doesNotMatch(JSON.stringify(d), /cus-demo-subscriber/, 'لا تسريب لهوية المالك');
   assert.match(S.build('subscriptions', d, c, x({ id: c.id })).list(), /متابعة فقط/);
   const v = S.numberDetail(d, n, c.id);
-  assert.match(v.body, /تتابع هذا الاشتراك ولا تملكه/); assert.doesNotMatch(v.foot, /protection-path/); assert.match(v.foot, /radar-toggle/);
+  assert.match(v.body, /تتابع هذا الاشتراك ولا تملكه/); assert.doesNotMatch(v.foot, /protection-path|radar-toggle/); assert.match(v.body, /radar-toggle/);
   assert.doesNotMatch(S.build('numbers', d, c, x({ id: c.id })).list(), /771234567/);
   const own = D.readForCustomer('cus-demo-subscriber'); own.protectionPackages = [{ id: 'pp-1', name: 'باقة', companyId: 'co-net77', days: 30, pointsCost: 10, active: true }]; const ov = S.numberDetail(own, own.numbers.find(v2 => v2.id === 'num-1001'), 'cus-demo-subscriber');
   assert.match(ov.foot, /protection-path/); assert.match(ov.body, /المدة المتبقية/);
@@ -477,4 +477,98 @@ test('U2-د: تحميل المزيد والسحب للتحديث في العمي
   assert.match(css, /\.row\[hidden\]\{display:none!important\}/);
   assert.match(js, /pullToRefresh/);assert.match(js, /s\.scrollTop > 0 \|\| e\.target\.closest\?\.\('input,textarea,select'\)/);
   assert.match(js, /if \(go\) \{ render\(\{\}\); toast\('حُدّثت البيانات\.'\); \}/);
+});
+
+/* ===== نوافذ العميل: البنية، الاستجابة، ومنظومة التركيز ===== */
+function assertCustomerSheet(html, label) {
+  assert.equal((html.match(/role="dialog"/g) || []).length, 1, `${label}: نافذة واحدة`);
+  assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="customer-sheet-title"/);
+  assert.equal((html.match(/class="sheet-close"/g) || []).length, 1, `${label}: زر إغلاق واحد`);
+  const close = html.match(/<button[^>]*class="sheet-close"[^>]*>([\s\S]*?)<\/button>/)?.[1] || '';
+  assert.match(close, /^<svg[\s\S]*<\/svg>$/, `${label}: الإغلاق أيقوني فقط`);
+  assert.match(html, /class="sheet-body" tabindex="0"/);
+  assert.match(html, /class="sheet-foot"/);
+  assert.ok((html.match(/class="btn primary"/g) || []).length <= 1, `${label}: إجراء أساسي واحد كحد أقصى`);
+}
+
+test('نوافذ التفاصيل لكل أرقام وعمليات بيانات العينة تبقى ضمن حوار واحد ذي إغلاق ورأس وإجراء سفلي', () => {
+  const done = K.btn('تم', 'sheet-close', 'primary');
+  for (const id of ['cus-demo-subscriber', 'cus-demo-low', 'cus-demo-new']) {
+    const d = D.readForCustomer(id), c = d.customers[0];
+    for (const n of D.customerNumbers(id, d)) {
+      const v = S.numberDetail(d, n, id);
+      assertCustomerSheet(K.sheet(v.title, v.body, v.foot || done), `${id}:number:${n.id}`);
+      assert.match(v.body, /class="kv"/, `${id}:${n.id}: تفاصيل مترابطة`);
+      assert.match(v.body, /sheet-secondary-actions/, `${id}:${n.id}: الإجراءات الثانوية ليست أزرارًا أساسية`);
+    }
+    const entries = [
+      ['points', d.pointTransactions.filter(v => v.customerId === id)],
+      ['request', d.purchaseRequests.filter(v => v.customerId === id)],
+      ['subscription', d.subscriptions.filter(v => v.customerId === id)],
+      ['protection', (d.protectionOperations || []).filter(v => v.customerId === id)]
+    ];
+    for (const [kind, records] of entries) for (const rec of records) {
+      const v = S.operationDetail(d, kind, rec.id, c);
+      if (!v) continue;
+      assertCustomerSheet(K.sheet(v.title, v.body, v.foot || done), `${id}:${kind}:${rec.id}`);
+      assert.match(v.body, /class="kv"|class="stages"/, `${id}:${kind}:${rec.id}: المحتوى منظّم`);
+    }
+  }
+});
+
+test('نافذة تفاصيل الرقم تجمع المعلومات وتُبقي إجراءات التنبيه والإشعار ثانوية', () => {
+  seed();
+  const d = D.readForCustomer('cus-demo-subscriber'), c = d.customers[0];
+  for (const n of D.customerNumbers(c.id, d)) {
+    const v = S.numberDetail(d, n, c.id);
+    assert.match(v.body, /class="kv"/);
+    assert.match(v.body, /class="sheet-secondary-actions"[\s\S]*data-act="number-notifications"/);
+    assert.doesNotMatch(v.foot, /data-act="radar-toggle|data-act="number-notifications/);
+    assert.ok(!v.foot || /class="btn primary"/.test(v.foot), 'إجراء الحماية وحده في التذييل');
+  }
+});
+
+test('مراجعة الحماية تجمع التكلفة والمدة والأرصدة وتحافظ على تنبيه الخصم والنقص', () => {
+  const js = read('customer.js');
+  assert.match(js, /class="kv protection-details"[\s\S]*id="protectionPackage"/);
+  for (const field of ['الرقم', 'الشركة', 'رصيد النقاط', 'باقة الحماية']) assert.match(js, new RegExp(field));
+  assert.match(js, /class="protection-review-financial"/);
+  for (const field of ['المدة الصافية', 'التكلفة', 'الرصيد الحالي', 'الرصيد بعد الخصم']) assert.match(js, new RegExp(field));
+  assert.match(js, /لن يُخصم الرصيد إلا بعد التأكيد النهائي/);
+  assert.match(js, /رصيدك غير كافٍ[\s\S]*لم يُخصم شيء/);
+  assert.match(js, /short > 0 \? K\.btn\('اشحن الآن'/);
+  assert.match(js, /data-act="protection-confirm"|K\.btn\('تأكيد وخصم النقاط', 'protection-confirm'/);
+  assert.match(js, /K\.btn\('رجوع', 'protection-path'/, 'الرجوع إلى اختيار الباقة يبقى فعلًا وظيفيًا');
+});
+
+test('كل النوافذ تستخدم زر إغلاق أيقونيًا 44×44 وتمريرًا داخليًا وsafe area وتركيزًا محايدًا', () => {
+  const css = read('customer.css'), js = read('customer.js'), sample = K.sheet('اختبار', '<p>محتوى</p>', K.btn('تم', 'sheet-close', 'primary'));
+  assertCustomerSheet(sample, 'قالب المجموعة');
+  assert.match(css, /\.sheet-close\{[^}]*width:44px;height:44px;min-width:44px;min-height:44px/);
+  assert.match(css, /\.sheet-body\{[^}]*overflow-y:auto[^}]*overscroll-behavior:contain/);
+  assert.match(css, /\.scrim\{[^}]*padding-top:env\(safe-area-inset-top\)/);
+  assert.match(css, /\.sheet\{[^}]*max-height:calc\(100% - env\(safe-area-inset-top\) - 8px\)[^}]*padding:[^;]*env\(safe-area-inset-bottom\)/);
+  assert.match(css, /:focus-visible\{outline:2px solid var\(--ink\)/);
+  assert.match(css, /\.protection-details \.kv-select-row select:focus-visible\{outline:2px solid var\(--ink\)/);
+  assert.match(css, /@media\(max-width:360px\)/);
+  assert.equal((css.match(/\.scrim\{/g) || []).length, 1, 'قاعدة النافذة في موضع واحد بلا override');
+  assert.equal((css.match(/\.sheet-body\{/g) || []).length, 1, 'قاعدة التمرير في موضع واحد بلا override');
+  assert.match(js, /\.sheet-close'\)\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.doesNotMatch(js, /#sheetRoot input:not\(\[type=hidden\]\),#sheetRoot select\)\?\.focus/);
+  assert.match(js, /ui\.sheetReturnFocus = document\.activeElement/);
+  assert.match(js, /target\?\.isConnected\) target\.focus/);
+  assert.match(js, /e\.key === 'Tab' && ui\.sheet/);
+  assert.match(js, /shiftKey && \(document\.activeElement === first/);
+  assert.match(js, /!e\.shiftKey && \(document\.activeElement === last/);
+});
+
+test('إزالة أزرار الإلغاء التي تكرر الإغلاق مع إبقاء لاحقًا والرجوع والإلغاء الوظيفي', () => {
+  const js = read('customer.js'), screens = read('customer-screens.js');
+  assert.doesNotMatch(js, /K\.btn\('إلغاء', 'sheet-close'/);
+  assert.doesNotMatch(js, /K\.submitBtn\([^\n]*\) \+ K\.btn\('إلغاء', 'sheet-close'/);
+  assert.match(js, /K\.btn\('لاحقًا', 'welcome-done'\)/);
+  assert.match(js, /K\.btn\('رجوع', 'protection-path'/);
+  assert.match(screens, /K\.btn\('إلغاء الطلب', 'order-cancel', 'danger'/, 'إلغاء الطلب له أثر وظيفي ويظل متاحًا');
+  assert.match(js, /K\.submitBtn\('إضافة الرقم', 'add-number-form'\)/);
+  assert.match(js, /K\.btn\('تسجيل الخروج', 'logout-confirm', 'primary'\)/);
 });

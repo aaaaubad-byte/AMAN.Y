@@ -152,8 +152,8 @@ button.row:active{background:rgba(0,0,0,.04)}
 .field label{grid-column:1;font-size:12px;line-height:1.3;color:var(--muted)}
 .field input,.field select,.field textarea{grid-column:2;width:100%;min-width:0;min-height:44px;border:0;background:transparent;padding:0;font-size:16px;outline:none;border-radius:0}
 .field select{appearance:none;-webkit-appearance:none;background-image:none}
-.field textarea{grid-column:1/-1;resize:vertical;min-height:72px;padding:4px 0;line-height:1.7}
-.field:focus-within{background:rgba(0,0,0,.025)}
+.field textarea{grid-column:1/-1;resize:vertical;min-height:72px;padding:8px 0;line-height:1.7}
+.field:focus-within{background:var(--card);box-shadow:inset 0 0 0 2px var(--ink)}
 .field small{font-size:12px;color:var(--muted)}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;position:relative;font-size:15px;line-height:1.5}
 .toggle span small{display:block;font-size:12px;color:var(--muted)}
@@ -253,7 +253,6 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .tpl-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
 .tpl-chip{min-height:36px;padding:0 14px;border-radius:999px;background:var(--tile);color:var(--ink);font-size:13px;font-weight:700}
 .tpl-chip:active{background:var(--line)}
-.field textarea{width:100%;border:0;background:transparent;padding:8px 0;font:inherit;font-size:16px;outline:none;resize:vertical;min-height:72px}
 
 /* ===== العملاء: شارات ووسوم وتحديد جماعي (U10) ===== */
 .rbadges{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
@@ -289,7 +288,7 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .auth .afield label{grid-column:1;font-size:11.5px;line-height:1.25;color:#a9b0ae}
 .auth .afield input{grid-column:2;min-width:0;min-height:44px;padding:0;line-height:1.35;font-size:16px}
 .auth .afield>.ferr{grid-column:1/-1}
-.auth .afield:focus-within{background:#2f2f2f;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.auth .afield:focus-within{background:#2f2f2f;box-shadow:inset 0 0 0 2px #fff}
 .auth .afield.invalid{background:#3b1c19;box-shadow:inset 0 0 0 1.5px #ff8a80}
 .auth .remember{min-height:44px;gap:7px;padding:0;font-size:12px;line-height:1.35}
 .auth .btn{height:46px;min-height:44px;border-radius:12px;font-size:14px}

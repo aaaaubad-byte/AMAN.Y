@@ -196,10 +196,18 @@
     toast.t = setTimeout(() => { e.classList.add('hidden'); ui.undo = null; }, undo ? 6500 : 3800);
   }
   function openSheet(title, body, foot) {
-    ui.sheet = true; $('#sheetRoot').innerHTML = K.sheet(title, body, foot);
-    setTimeout(() => $('#sheetRoot input:not([type=hidden]),#sheetRoot select')?.focus(), 30);
+    if (!ui.sheet) ui.sheetReturnFocus = document.activeElement;
+    ui.sheet = true;
+    const actions = foot || K.btn('تم', 'sheet-close', 'primary');
+    $('#sheetRoot').innerHTML = K.sheet(title, body, actions);
+    setTimeout(() => $('#sheetRoot .sheet-close')?.focus({ preventScroll: true }), 0);
   }
-  function closeSheet() { if (!ui.sheet) return; ui.sheet = false; $('#sheetRoot').innerHTML = ''; }
+  function closeSheet() {
+    if (!ui.sheet) return;
+    ui.sheet = false; $('#sheetRoot').innerHTML = '';
+    const target = ui.sheetReturnFocus; ui.sheetReturnFocus = null;
+    if (target?.isConnected) target.focus?.({ preventScroll: true });
+  }
   function showError(msg) {
     const el = document.querySelector('#sheetRoot #form-error') || $('#form-error');
     if (el) { el.textContent = msg; el.classList.remove('hidden'); el.scrollIntoView?.({ block: 'nearest' }); return true; }
@@ -264,7 +272,7 @@
     openSheet(v.title, v.body, v.foot);
   }
   function addNumberSheet() {
-    openSheet('إضافة رقم إلى أرقامي', `<form id="add-number-form" data-form="add-number" novalidate>${K.fields(K.field({ id: 'newNumber', name: 'number', label: 'رقم الهاتف', type: 'tel', required: true, inputmode: 'numeric', dir: 'ltr', autocomplete: 'tel-national' }))}<p id="modal-company" class="note">أدخل الرقم لتحديد شركة الاتصالات</p>${errBox}</form><p class="note">إضافة الرقم لا تخصم نقاطًا ولا تفعّل الحماية.</p>`, K.submitBtn('إضافة الرقم', 'add-number-form') + K.btn('إلغاء', 'sheet-close'));
+    openSheet('إضافة رقم إلى أرقامي', `<form id="add-number-form" data-form="add-number" novalidate>${K.fields(K.field({ id: 'newNumber', name: 'number', label: 'رقم الهاتف', type: 'tel', required: true, inputmode: 'numeric', dir: 'ltr', autocomplete: 'tel-national' }))}<p id="modal-company" class="note">أدخل الرقم لتحديد شركة الاتصالات</p>${errBox}</form><p class="note">إضافة الرقم لا تخصم نقاطًا ولا تفعّل الحماية.</p>`, K.submitBtn('إضافة الرقم', 'add-number-form'));
   }
   /* ----- تجديد عدة أرقام دفعة واحدة (بند 86): اختيار الأرقام والباقات، إجمالي التكلفة، ثم تأكيد واحد ----- */
   function batchCandidates() {
@@ -278,7 +286,7 @@
     const items = batchCandidates();
     if (items.length < 1) { toast('لا توجد أرقام قابلة للتجديد الآن.', true); return; }
     const rows = items.map(({ n, op, packs }) => `<div class="batch-row" data-number="${E(n.number)}" data-op="${op}"><label class="choice"><input type="checkbox" class="bt-chk" value="${E(n.id)}"><span class="cmain"><b class="ltr">${E(n.number)}</b><small>${op === 'renew' ? 'منتهٍ — تجديد' : 'قريب الانتهاء — تمديد'}</small></span></label><label class="select block"><select class="bt-pkg" aria-label="باقة الرقم ${E(n.number)}"><option value="">اختر الباقة</option>${packs.map(p => `<option value="${E(p.id)}" data-cost="${Number(p.pointsCost)}">${E(p.name)} · ${N(p.days)} يوم · ${N(p.pointsCost)} نقطة</option>`).join('')}</select></label></div>`).join('');
-    openSheet('تجديد عدة أرقام', `<div id="batch-form">${rows}<div id="batch-total" class="note" aria-live="polite"></div>${errBox}</div>`, K.btn('تأكيد وخصم النقاط', 'batch-confirm', 'primary', 'id="batch-go" disabled') + K.btn('إلغاء', 'sheet-close'));
+    openSheet('تجديد عدة أرقام', `<div id="batch-form">${rows}<div id="batch-total" class="note" aria-live="polite"></div>${errBox}</div>`, K.btn('تأكيد وخصم النقاط', 'batch-confirm', 'primary', 'id="batch-go" disabled'));
     batchRefresh();
   }
   // يقرأ اختيارات النافذة ويتحقق منها؛ يعيد الخطة أو سبب عدم الاكتمال
@@ -337,10 +345,11 @@
     }
     ui.pending = { number, operation, packageId, key: ui.key };
     const labels = { subscribe: 'الاشتراك في الحماية', extend: 'تمديد الحماية', renew: 'تجديد الحماية' };
-    const rows = [['العملية', labels[operation] || 'عملية الحماية'], ['رقم الهاتف', `<span class="ltr">${E(number)}</span>`], ['الباقة', E(p.name)], ['المدة الصافية', `${N(netDays)} يوم`], ['التكلفة', `${N(p.pointsCost)} نقطة`], ['الرصيد الحالي', `${N(balance)} نقطة`], ['الرصيد بعد الخصم', `${N(balance - Number(p.pointsCost))} نقطة`], ['بداية العملية', starts]];
+    const rows = [['العملية', labels[operation] || 'عملية الحماية'], ['رقم الهاتف', `<span class="ltr">${E(number)}</span>`], ['الباقة', E(p.name)], ['بداية العملية', starts]];
     if (ends) rows.push(['الانتهاء المتوقع', ends]);
+    const financial = [['المدة الصافية', `${N(netDays)} يوم`], ['التكلفة', `${N(p.pointsCost)} نقطة`], ['الرصيد الحالي', `${N(balance)} نقطة`], ['الرصيد بعد الخصم', `${N(balance - Number(p.pointsCost))} نقطة`]];
     const short = Number(p.pointsCost) - balance, back = K.btn('رجوع', 'protection-path', '', `data-number="${E(number)}" data-company="${E(companyId)}" data-operation="${operation}"`);
-    openSheet('مراجعة عملية الحماية', `${K.kv(rows)}${short > 0 ? K.callout('wallet', 'رصيدك غير كافٍ', `<p>ينقصك ${N(short)} نقطة لإتمام هذه العملية. لم يُخصم شيء.</p>`, false, 'id="shortfall"') : '<p class="sheet-text">لن يُخصم الرصيد إلا بعد التأكيد النهائي.</p>'}${errBox}`,
+    openSheet('مراجعة عملية الحماية', `${K.kv(rows)}<div class="protection-review-financial">${K.section('التكلفة والرصيد')}${K.kv(financial)}</div>${short > 0 ? K.callout('wallet', 'رصيدك غير كافٍ', `<p>ينقصك ${N(short)} نقطة لإتمام هذه العملية. لم يُخصم شيء.</p>`, false, 'id="shortfall"') : '<p class="sheet-text">لن يُخصم الرصيد إلا بعد التأكيد النهائي.</p>'}${errBox}`,
       (short > 0 ? K.btn('اشحن الآن', 'topup', 'primary', `data-short="${short}"`) : K.btn('تأكيد وخصم النقاط', 'protection-confirm', 'primary', 'data-confirm')) + back);
   }
   function numberNotificationsSheet(id) {
@@ -359,7 +368,7 @@
     if (seen || !fresh) return;
     ui.welcomeShown = true; welcomeSheet();
   }
-  const logoutSheet = () => openSheet('تسجيل الخروج', '<p class="sheet-text">هل تريد إنهاء الجلسة الحالية؟ لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary') + K.btn('إلغاء', 'sheet-close'));
+  const logoutSheet = () => openSheet('تسجيل الخروج', '<p class="sheet-text">هل تريد إنهاء الجلسة الحالية؟ لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary'));
 
   /* ===================== معالجة النقر ===================== */
   document.addEventListener('click', async e => {
@@ -472,10 +481,10 @@
           b.innerHTML = K.ico(show ? 'eyeoff' : 'eye'); input.focus(); return;
         }
         case 'password-open':
-          openSheet('تغيير كلمة المرور', `<form id="cp-form" data-form="change-password" novalidate>${K.fields(K.field({ id: 'cp_old', name: 'old', label: 'كلمة المرور الحالية', type: 'password', autocomplete: 'current-password' }) + K.field({ id: 'cp_new', name: 'new1', label: 'كلمة المرور الجديدة (4 خانات فأكثر)', type: 'password', autocomplete: 'new-password' }) + K.field({ id: 'cp_new2', name: 'new2', label: 'إعادة كلمة المرور الجديدة', type: 'password', autocomplete: 'new-password' }))}${errBox}</form>`, K.submitBtn('حفظ كلمة المرور', 'cp-form') + K.btn('إلغاء', 'sheet-close')); return;
+          openSheet('تغيير كلمة المرور', `<form id="cp-form" data-form="change-password" novalidate>${K.fields(K.field({ id: 'cp_old', name: 'old', label: 'كلمة المرور الحالية', type: 'password', autocomplete: 'current-password' }) + K.field({ id: 'cp_new', name: 'new1', label: 'كلمة المرور الجديدة (4 خانات فأكثر)', type: 'password', autocomplete: 'new-password' }) + K.field({ id: 'cp_new2', name: 'new2', label: 'إعادة كلمة المرور الجديدة', type: 'password', autocomplete: 'new-password' }))}${errBox}</form>`, K.submitBtn('حفظ كلمة المرور', 'cp-form')); return;
         case 'delete-open': {
           const d = data(), c = d.customers[0], bal = D.balance(ui.id, d), pend = d.purchaseRequests.filter(r => r.customerId === ui.id && r.status === 'pending').length, live = D.customerNumbers(ui.id, d).filter(n => S.numberState(d, n, ui.id).own === true).length;
-          openSheet('حذف الحساب', `<p class="sheet-text">سيُخفى اسمك وبريدك ويُغلق الدخول إلى الحساب نهائيًا.</p>${K.kv([['رصيدك الحالي', `${N(bal)} نقطة — يُفقد ولا يُسترد`], ['اشتراكات سارية باسمك', `${N(live)} — تبقى حتى انتهائها دون وصول إليها`], ['طلبات معلقة', `${N(pend)} — تُلغى تلقائيًا`]])}${K.note('تبقى السجلات المالية وسجلات النقاط والطلبات والتدقيق دون هويتك، لأن الاحتفاظ بها مطلوب.')}<form id="del-form" data-form="delete-account" novalidate>${K.fields(K.field({ id: 'del_pass', name: 'password', label: 'كلمة المرور لتأكيد الحذف', type: 'password', autocomplete: 'current-password' }))}${errBox}</form>`, K.submitBtn('حذف الحساب نهائيًا', 'del-form', 'danger') + K.btn('إلغاء', 'sheet-close', 'primary')); return;
+          openSheet('حذف الحساب', `<p class="sheet-text">سيُخفى اسمك وبريدك ويُغلق الدخول إلى الحساب نهائيًا.</p>${K.kv([['رصيدك الحالي', `${N(bal)} نقطة — يُفقد ولا يُسترد`], ['اشتراكات سارية باسمك', `${N(live)} — تبقى حتى انتهائها دون وصول إليها`], ['طلبات معلقة', `${N(pend)} — تُلغى تلقائيًا`]])}${K.note('تبقى السجلات المالية وسجلات النقاط والطلبات والتدقيق دون هويتك، لأن الاحتفاظ بها مطلوب.')}<form id="del-form" data-form="delete-account" novalidate>${K.fields(K.field({ id: 'del_pass', name: 'password', label: 'كلمة المرور لتأكيد الحذف', type: 'password', autocomplete: 'current-password' }))}${errBox}</form>`, K.submitBtn('حذف الحساب نهائيًا', 'del-form', 'danger')); return;
         }
         case 'welcome-open': welcomeSheet(); return;
         case 'welcome-done': markWelcome(); closeSheet(); return;
@@ -596,6 +605,16 @@
      وإلا ينتقل إلى أول حقل ناقص، ولا يرسل أثناء تنفيذ عملية سابقة. */
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); return; }
+    if (e.key === 'Tab' && ui.sheet) {
+      const dialog = $('#sheetRoot .sheet');
+      const focusable = [...(dialog?.querySelectorAll('a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])') || [])].filter(el => !el.hidden && el.getClientRects().length);
+      if (focusable.length) {
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      } else if (dialog) { e.preventDefault(); dialog.focus(); }
+      return;
+    }
     if (e.key !== 'Enter' || e.isComposing) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'button', 'submit'].includes(t.type)) return;

@@ -118,11 +118,18 @@
     e.classList.remove('hidden', 'error'); e.classList.toggle('error', bad); e.classList.toggle('has-undo', !!undo); e.classList.toggle('up', !!$('#bar .actionbar'));
     toast.t = setTimeout(() => { e.classList.add('hidden'); ui.undo = null; }, undo ? 6500 : 3800);
   }
+  let sheetOpener = null;
   function openSheet(title, body, foot) {
+    sheetOpener = document.activeElement;
     ui.sheet = true; $('#sheetRoot').innerHTML = K.sheet(title, body, foot);
-    setTimeout(() => $('#sheetRoot input:not([type=hidden]),#sheetRoot textarea,#sheetRoot select')?.focus(), 30);
+    setTimeout(() => $('#sheetRoot .sheet-close')?.focus({ preventScroll: true }), 0);
   }
-  function closeSheet() { if (!ui.sheet) return; ui.sheet = false; $('#sheetRoot').innerHTML = ''; }
+  function closeSheet(restoreFocus = false) {
+    if (!ui.sheet) return;
+    ui.sheet = false; $('#sheetRoot').innerHTML = '';
+    if (restoreFocus && sheetOpener?.isConnected) sheetOpener.focus();
+    sheetOpener = null;
+  }
   function showError(msg) {
     const el = document.querySelector('#sheetRoot #form-error') || $('#form-error');
     if (el) { el.textContent = msg; el.classList.remove('hidden'); el.scrollIntoView?.({ block: 'nearest' }); return true; }
@@ -185,8 +192,11 @@
     const tpls = (d.messageTemplates || []).filter(t => t.kind === (ok ? 'reply' : 'reject'));
     const chips = tpls.length ? `<div class="tpl-chips" role="group" aria-label="قوالب جاهزة">${tpls.map(t => `<button type="button" class="tpl-chip" data-act="tpl-apply" data-text="${E(t.body)}">${E(t.title)}</button>`).join('')}</div>` : '';
     const dupWarn = dup.same.length ? K.callout('info', 'مرجع مكرر', `<small style="display:block;line-height:1.9;margin-top:4px">استُخدم المرجع نفسه بوسيلة الدفع نفسها في ${N(dup.same.length)} طلب آخر. ${ok ? 'تحقق قبل الاعتماد.' : ''}</small>`, false, 'id="dupSheetAlert"') : '';
+    const impact = ok
+      ? K.kv([['العميل', E(c?.name || 'العميل')], ['النقاط', `${N(pk.points)} نقطة`], ['الإيراد', `${N(pk.price)} ر.ي (مرة واحدة)`], ['اشتراك رقم', 'لا ينشأ']])
+      : K.kv([['النقاط والإيراد', 'لا يُضاف شيء'], ['إعادة المراجعة', 'غير ممكنة'], ['سبب الرفض', 'يظهر للعميل في التفاصيل والإشعار']]);
     openSheet(ok ? 'اعتماد طلب النقاط' : 'رفض طلب النقاط',
-      `<p class="sheet-text">${ok ? `سيُضاف ${strong(N(pk.points) + ' نقطة')} إلى رصيد ${E(c?.name || 'العميل')}، ويُسجَّل إيراد ${strong(N(pk.price) + ' ر.ي')} في السجل المالي مرة واحدة. الاعتماد يخص طلب الشراء فقط ولا ينشئ اشتراكًا لأي رقم.` : 'سيُرفض الطلب دون إضافة نقاط أو تسجيل إيراد، ولا يمكن مراجعته مرة ثانية. يرى العميل السبب في تفاصيل الطلب وفي إشعاره.'}</p>${dupWarn}
+      `${impact}${dupWarn}
 <div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (تظهر للعميل، اختياري)' : 'سبب الرفض (يظهر للعميل)'}</label>${chips}<textarea id="reviewNote" name="note" rows="3" maxlength="300" placeholder="${ok ? 'يمكنك اختيار قالب أو كتابة نص' : 'اختر قالبًا وعدّل نصه أو اكتب السبب'}"></textarea></div></div>${errBox}`,
       K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + (next ? K.btn(ok ? 'اعتماد وفتح التالي' : 'رفض وفتح التالي', 'review-confirm', '', `data-confirm data-next="${E(next)}" data-id="${E(id)}" data-decision="${decision}"`) : ''));
   }
@@ -196,7 +206,7 @@
     if (!t) return toast('المهمة غير موجودة.', true);
     const next = M.nextAvailableAfter(d, D, id), n = M.number(d, t.numberId);
     openSheet(new Date(t.dueAt) > Date.now() ? 'تسجيل تنفيذ المهمة مبكرًا' : 'تسجيل تنفيذ المهمة',
-      `<p class="sheet-text">الرقم ${n ? `<span class="ltr">${E(n.number)}</span>` : ''}. سيُسجَّل مصروف المهمة ${strong(N(t.expenseAmount) + ' ر.ي')} في السجل المالي مرة واحدة، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي وفق إعدادات الشركة. لا يتغير رصيد نقاط العميل. لا يمكن تسجيل أكثر من مهمة في العملية الواحدة.</p>
+      `${K.kv([...(n ? [['الرقم', `<span class="ltr">${E(n.number)}</span>`]] : []), ['مصروف المهمة', `${N(t.expenseAmount)} ر.ي (مرة واحدة)`], ['المهمة التالية', 'تُنشأ وفق إعدادات الشركة بعد التنفيذ'], ['رصيد نقاط العميل', 'لا يتغير'], ['حد العملية', 'مهمة واحدة']])}
 <div class="fields"><label class="toggle"><span>نفّذت السداد فعليًا عبر وسيلة الدفع الخارجية<small>التسجيل يوثّق ما تم؛ لا يُنفَّذ السداد من هنا.</small></span><input class="switch" type="checkbox" role="switch" id="paidConfirm"></label></div>${errBox}`,
       K.btn('تسجيل التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + (next ? K.btn('تسجيل التنفيذ وفتح التالية', 'execute-confirm', '', `data-confirm data-next="${E(next.id)}" data-id="${E(id)}"`) : ''));
   }
@@ -212,7 +222,7 @@
   function reverseSheet(id) {
     const x = D.read().financeEntries.find(e => e.id === id);
     if (!x) return toast('القيد المالي غير موجود.', true);
-    openSheet('عكس قيد مالي', `<p class="sheet-text">سيُنشأ قيد معاكس بالمبلغ نفسه (${N(x.amount)} ر.ي) مع الاحتفاظ بالقيد الأصلي. لا يمكن عكس القيد نفسه مرتين.</p><form id="sheet-form" data-form="finance-reverse"><input type="hidden" name="entryId" value="${E(id)}">${K.fields(K.field({ name: 'reason', label: 'سبب العكس', type: 'textarea', required: true, minlength: 3, rows: 3, placeholder: 'اكتب سبب التصحيح' }))}${errBox}</form>`, formFoot('تأكيد عكس القيد'));
+    openSheet('عكس قيد مالي', `${K.kv([['المبلغ المعاكس', `${N(x.amount)} ر.ي`], ['القيد الأصلي', 'يبقى محفوظًا'], ['حد الإجراء', 'لا يمكن عكس القيد نفسه مرتين']])}<form id="sheet-form" data-form="finance-reverse"><input type="hidden" name="entryId" value="${E(id)}">${K.fields(K.field({ name: 'reason', label: 'سبب العكس', type: 'textarea', required: true, minlength: 3, rows: 3, placeholder: 'اكتب سبب التصحيح' }))}${errBox}</form>`, formFoot('تأكيد عكس القيد'));
   }
   function addNumberSheet(customerId = '') {
     const d = D.read();
@@ -224,13 +234,13 @@
     openSheet('إنشاء إشعار إداري', `<form id="sheet-form" data-form="notice">${K.fields(K.field({ name: 'title', label: 'العنوان', required: true }) + K.field({ name: 'body', label: 'النص', type: 'textarea', required: true, rows: 3 }) + K.field({ name: 'audience', label: 'الجمهور', type: 'select', value: 'all', options: [['all', 'كل العملاء'], ['subscribers', 'المشتركون'], ['customer', 'عميل محدد']] }) + `<div id="notice-customer" class="hidden">${K.field({ name: 'customerId', label: 'العميل', type: 'select', options: d.customers.map(c => [c.id, c.name]) })}</div>`)}<p class="note">إشعار محلي في هذا التطبيق؛ لا يُرسل خارج المتصفح.</p>${errBox}</form>`, formFoot('إنشاء محليًا'));
   }
   function logoutSheet() {
-    openSheet('تسجيل الخروج', '<p class="sheet-text">ستنتهي جلسة الإدارة المحلية على هذا المتصفح. لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary'));
+    openSheet('تسجيل الخروج', K.kv([['الجلسة', 'ستنتهي على هذا المتصفح'], ['البيانات المحفوظة', 'لا تُحذف']]), K.btn('تسجيل الخروج', 'logout-confirm', 'primary'));
   }
   // حذف تصنيف قرب انتهاء (U11): تأكيد بالأثر؛ لا يمس أي اشتراك أو إشعار سبق إنشاؤه
   function expiryDeleteSheet(coId, classId) {
     const d = D.read(), co = M.company(d, coId), k = X.forCompany(d, coId).classes.find(c => c.id === classId);
     if (!co || !k) return toast('التصنيف غير موجود.', true);
-    openSheet('حذف تصنيف', `<p class="sheet-text">سيُحذف التصنيف ${strong(E(k.name))} من شركة ${strong(E(co.name))}؛ لن تظهر شارته ولا فلتره بعد الآن، ولن يُنشأ إشعار جديد له. لا يتأثر أي اشتراك ولا إشعار سبق إنشاؤه. لا يمكن التراجع عن الحذف، ويمكنك إعادة إضافة التصنيف يدويًا.</p>${errBox}`, K.btn('تأكيد الحذف', 'exp-class-delete-confirm', 'primary', `data-confirm data-co="${E(coId)}" data-id="${E(classId)}"`));
+    openSheet('حذف تصنيف', `${K.kv([['الشركة', E(co.name)], ['التصنيف', E(k.name)], ['الأثر', 'لن تظهر الشارة أو الفلتر، ولن يُنشأ إشعار جديد'], ['الاشتراكات والإشعارات السابقة', 'لا تتأثر'], ['التراجع', 'لا يمكن التراجع؛ يمكن إضافة التصنيف يدويًا']])}${errBox}`, K.btn('تأكيد الحذف', 'exp-class-delete-confirm', 'primary', `data-confirm data-co="${E(coId)}" data-id="${E(classId)}"`));
   }
 
   /* ===================== معالجة النقر ===================== */
@@ -254,7 +264,7 @@
     const cur = c.status || 'active', r = D.restrictionsOf(c);
     const toggles = [['login', 'منع تسجيل الدخول'], ['purchase', 'منع شراء النقاط'], ['protection', 'منع خدمات الحماية (الاشتراك والتمديد والتجديد)']].map(([k, l]) => K.toggle('r_' + k, l, cur === 'suspended' && r[k])).join('');
     openSheet('حالة الحساب',
-      `<p class="sheet-text">${E(c.name)} — الحالة الحالية: ${strong(E(M.CUSTOMER_STATUS[cur] || cur))}. لا يُرسَل إشعار للعميل؛ تظهر له رسالة عامة عند الدخول أو العملية الممنوعة ولا يرى السبب.</p>
+      `${K.kv([['العميل', E(c.name)], ['الحالة الحالية', E(M.CUSTOMER_STATUS[cur] || cur)], ['إشعار العميل', 'لا يُرسل؛ تظهر رسالة عامة دون السبب']])}
 <form id="sheet-form" data-form="customer-status"><input type="hidden" name="id" value="${E(id)}">${K.fields(
         K.field({ name: 'status', label: 'الحالة الجديدة', type: 'select', value: cur, options: [['active', 'فعال'], ['suspended', 'موقوف'], ['blocked', 'محظور']] }) +
         `<div id="restr-box" class="hidden"><div class="field"><label>الأثر (اختر واحدًا على الأقل)</label>${toggles}</div></div>` +
@@ -272,7 +282,7 @@
     if (!add && !have.length) return toast('لا توجد وسوم على العملاء المحددين.', true);
     const chips = add && known.length ? `<div class="tpl-chips" role="group" aria-label="وسوم موجودة">${known.map(t => `<button type="button" class="tpl-chip" data-act="tag-pick" data-text="${E(t)}">${E(t)}</button>`).join('')}</div>` : '';
     openSheet(add ? 'إضافة وسم' : 'إزالة وسم',
-      `<p class="sheet-text">سيُطبَّق على ${strong(N(list.length) + ' عميلًا')}. العملية ذرّية: إن فشلت لا يُحفظ أي تغيير، ويمكنك التراجع بعدها.</p>
+      `${K.kv([['العملاء المحددون', N(list.length)], ['الحفظ', 'ذرّي؛ لا يُحفظ أي تغيير عند الفشل'], ['بعد النجاح', 'يمكن التراجع']])}
 <form id="sheet-form" data-form="bulk-tag"><input type="hidden" name="mode" value="${add ? 'add' : 'remove'}"><input type="hidden" name="ids" value="${E(list.join(','))}">${K.fields(add
         ? K.field({ name: 'tag', label: 'اسم الوسم', required: true, help: 'حتى 24 حرفًا. الوسم «مميز» يمنح شارة «مميز».' }) + chips
         : K.field({ name: 'tag', label: 'الوسم المراد إزالته', type: 'select', value: have[0], options: have.map(t => [t, t]) }))}${errBox}</form>`,
@@ -283,7 +293,7 @@
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act, id = b.dataset.id;
-    if (a === 'sheet-scrim') { if (e.target === b) closeSheet(); return; }
+    if (a === 'sheet-scrim') { if (e.target === b) closeSheet(true); return; }
     try {
       switch (a) {
         case 'go': go(b.dataset.to); return;
@@ -294,7 +304,7 @@
         case 'toast-undo': { const u = ui.undo; ui.undo = null; $('#toast').classList.add('hidden'); if (u) await run(async () => { await u.fn(); render(); toast('تم التراجع.'); }); return; }
         case 'copy': await copyText(b.dataset.copy, b.dataset.label || 'القيمة'); return;
         case 'tab': go(withTab(ui.route, b.dataset.tab), { replace: true, keepQuery: true }); return;
-        case 'sheet-close': closeSheet(); return;
+        case 'sheet-close': closeSheet(true); return;
         case 'review-open': reviewSheet(id, b.dataset.decision); return;
         case 'task-execute-open': executeSheet(id); return;
         case 'task-resched-open': reschedSheet(id); return;
@@ -329,7 +339,7 @@
           toast(`أُزيل الوسم «${tag}».`, false, { fn: () => restoreTags(prev) });
         }); return;
         case 'note-add':
-          openSheet('ملاحظة داخلية', `<p class="sheet-text">لا تظهر للعميل أبدًا.</p><div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`)); setTimeout(() => $('#noteText')?.focus(), 50); return;
+          openSheet('ملاحظة داخلية', `${K.kv([['الظهور', 'للفريق الإداري فقط؛ لا تظهر للعميل']])}<div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`)); return;
         case 'note-save': await run(async () => { await D.addInternalNote(ADMIN, b.dataset.type, id, $('#noteText')?.value || ''); closeSheet(); render(); toast('حُفظت الملاحظة الداخلية.'); }, 'note'); return;
         case 'note-delete': await run(async () => {
           const prev = (D.read().internalNotes || []).find(x => x.id === id); await D.deleteInternalNote(ADMIN, id); render();
@@ -438,7 +448,15 @@
   });
   /* اختصارات (15): Esc يغلق النافذة؛ Enter لا يرسل والحقول المطلوبة ناقصة (ينتقل لأول ناقص) ولا أثناء عملية جارية */
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(); return; }
+    if (e.key === 'Escape' && ui.sheet) { e.preventDefault(); closeSheet(true); return; }
+    if (e.key === 'Tab' && ui.sheet) {
+      const dialog = $('#sheetRoot .sheet'), items = [...(dialog?.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') || [])].filter(x => x.getClientRects().length);
+      if (!items.length) { e.preventDefault(); dialog?.focus(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      return;
+    }
     if (e.key !== 'Enter' || e.isComposing) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'button', 'submit'].includes(t.type)) return;

@@ -140,11 +140,12 @@ test('U2-ب: أخطاء الحقول بجانبها وEnter والتركيز ا�
   assert.match(html, /aria-describedby="f_name-err"/);assert.match(html, /id="f_name-err" role="alert"/);
   assert.match(AmanAdminKit.field({ name: 'k', label: 'ك', type: 'select', options: [['a', 'أ']] }), /f_k-err/);
   const js = rd('admin.js'), login = rd('admin-screens.js');
-  assert.match(js, /addEventListener\('invalid'/);assert.match(js, /setFieldError\('l_pass'/);
+  assert.match(js, /addEventListener\('invalid'/);assert.match(js, /setFieldError\(t\.id, msg\)/);
   assert.match(js, /if \(missing && missing !== t\) \{ e\.preventDefault\(\); missing\.focus\(\); \}/);
   assert.match(js, /if \(ui\.busy\) \{ e\.preventDefault\(\); return; \}/);
   assert.match(js, /v\.chrome === 'form' && !opt\.restore/);
-  for (const id of ['l_email', 'l_pass']) assert.match(login, new RegExp(`id="${id}-err"`));
+  const loginMarkup = AmanAdminScreens.login(false, 8).html;
+  for (const id of ['l_pass', 'l_pass_confirm']) assert.match(loginMarkup, new RegExp(`id="${id}-err"`));
 });
 
 test('U2-ج: تحميل المزيد والسحب للتحديث والتراجع غير المالي ومسح التصفية في الإدارة (24 و39 و55 و56 و58)', () => {
@@ -237,4 +238,38 @@ test('U9: تجميع المهام بالشركة والانتقال للتالي
   assert.match(js, /id="paidConfirm"/); assert.match(js, /if \(!\$\('#paidConfirm'\)\?\.checked\)/);
   assert.match(js, /data-next="\$\{E\(next\.id\)\}"/, 'فتح التالية لا يُنفِّذها تلقائيًا');
   assert.equal((js.match(/D\.executeTask\(/g) || []).length, 1, 'مسار تنفيذ واحد لمهمة واحدة');
+});
+
+test('نوافذ الإدارة: بنية موحدة قابلة للوصول وإغلاق لوحة المفاتيح والإغلاق البصري فقط', () => {
+  const kit = AmanAdminKit, js = fs.readFileSync(path.join(apps, 'admin.js'), 'utf8'), html = kit.sheet('تجربة', '<p>محتوى</p>', kit.btn('تنفيذ', 'go', 'primary'));
+  assert.match(html, /<section class="sheet" role="dialog" aria-modal="true" aria-labelledby="admin-sheet-title" tabindex="-1"/);
+  assert.match(html, /<h2 id="admin-sheet-title">تجربة<\/h2>/);
+  assert.equal((html.match(/class="sheet-close"/g) || []).length, 1, 'زر إغلاق واحد بالرأس');
+  assert.match(html, /class="sheet-close"[^>]*aria-label="إغلاق"><svg[^>]*aria-hidden="true"/);
+  assert.match(js, /case 'sheet-close': closeSheet\(true\)/); assert.match(js, /e\.target === b\) closeSheet\(true\)/);
+  assert.match(js, /e\.key === 'Escape' && ui\.sheet[\s\S]*closeSheet\(true\)/);
+  assert.match(js, /e\.key === 'Tab' && ui\.sheet[\s\S]*first\.focus\(\)/, 'تركيز لوحة المفاتيح محصور في الحوار');
+  assert.match(js, /sheetOpener\?\.isConnected\) sheetOpener\.focus\(\)/, 'إرجاع التركيز إلى فاتح النافذة');
+  assert.ok((js.match(/openSheet\(/g) || []).length >= 12, 'تغطية دوال فتح النوافذ الفعلية لا قالب الحوار وحده');
+  assert.match(js, /case 'exp-class-delete-open': expiryDeleteSheet\(b\.dataset\.co, id\)/, 'مسار حذف التصنيف القادم من شاشة الانتهاء');
+  assert.match(js, /لا ينشأ/); assert.match(js, /إعادة المراجعة/);
+  assert.match(js, /نفّذت السداد فعليًا عبر وسيلة الدفع الخارجية/); assert.match(js, /لا يُنفَّذ السداد من هنا/);
+  assert.match(js, /لا يمكن عكس القيد نفسه مرتين/); assert.match(js, /لا تتأثر/); assert.match(js, /لا يُحذف شيء/);
+  assert.match(js, /K\.btn\(ok \? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary'/);
+  assert.match(js, /K\.btn\('تأكيد الحذف', 'exp-class-delete-confirm', 'primary'/);
+  assert.doesNotMatch(js, /K\.btn\(['"](?:إلغاء|الغاء|إغلاق|لاحقًا)['"]/,'لا أزرار إلغاء لا تفعل سوى الإغلاق');
+});
+
+test('CSS النوافذ: إغلاق 44px بلا زخرفة، جسم قابل للتمرير، مناطق آمنة وتركيز محايد', () => {
+  const css = fs.readFileSync(path.join(apps, 'admin.css'), 'utf8');
+  assert.match(css, /\.sheet-close\{[^}]*width:44px;height:44px;[^}]*background:transparent;[^}]*box-shadow:none/);
+  assert.match(css, /\.sheet-close\{[^}]*border:0/);
+  assert.match(css, /\.sheet-body\{[^}]*overflow-y:auto;[^}]*min-height:0/);
+  assert.match(css, /\.sheet\{[^}]*max-height:calc\(100% - env\(--safe-area-inset-top|calc\(100% - env\(safe-area-inset-top\)/);
+  assert.match(css, /padding:12px var\(--pad\) calc\(12px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(css, /:focus-visible\{outline:2px solid var\(--ink\)/);
+  assert.match(css, /\.field:focus-within\{[^}]*box-shadow:inset 0 0 0 2px var\(--ink\)/);
+  assert.match(css, /button\{cursor:pointer/);
+  for (const width of [320, 360, 390, 430]) assert.ok(width <= 440, `عرض الهاتف ${width}px ضمن حد الحاوية`);
+  assert.match(css, /@media\(max-width:360px\)/);
 });
