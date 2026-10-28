@@ -92,7 +92,7 @@
 
   /* ----- النافذة السفلية ----- */
   const sheet = (title, body, foot = '', id = '') =>
-    `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" ${id ? `id="${esc(id)}"` : ''}><div class="sheet-head"><button type="button" class="tile-btn" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
+    `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}" ${id ? `id="${esc(id)}"` : ''}><div class="sheet-head"><button type="button" class="sheet-close" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
 
   root.AmanAdminKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, skeleton, copyBtn, note, callout, metrics, tabs, toolbar, btn, submitBtn, field, toggle, fields, sheet };
 })(window);

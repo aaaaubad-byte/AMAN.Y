@@ -138,7 +138,7 @@
 
   /* ----- النافذة السفلية ----- */
   const sheet = (title, body, foot = '') =>
-    `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><button type="button" class="tile-btn" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
+    `<div class="scrim" data-act="sheet-scrim"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><button type="button" class="sheet-close" data-act="sheet-close" aria-label="إغلاق">${ico('close')}</button><h2>${esc(title)}</h2><span></span></div><div class="sheet-body">${body}</div>${foot ? `<div class="sheet-foot">${foot}</div>` : ''}</section></div>`;
 
   root.AmanCustomerKit = { esc, ico, tile, pill, bar, tileAction, section, row, card, kv, empty, skeleton, copyBtn, note, callout, toolbar, btn, submitBtn, field, authField, passwordStrength, strengthMeter, validate, fieldForError, toggle, fields, sheet };
 })(window);

@@ -306,8 +306,15 @@
     if (!packs.length) throw new Error('لا توجد باقات حماية متاحة لهذه الشركة.');
     ui.key = D.uid('idem');
     const title = operation === 'extend' ? 'تمديد الحماية' : operation === 'renew' ? 'تجديد الحماية' : 'تفعيل الحماية';
-    openSheet(title, `${K.kv([['الرقم', `<span class="ltr">${E(number)}</span>`], ['الشركة', E(d.companies.find(c => c.id === companyId)?.name || '')], ['رصيد النقاط', `${N(D.balance(ui.id, d))} نقطة`]])}${K.fields(K.field({ id: 'protectionPackage', name: 'protectionPackage', label: 'باقة الحماية', type: 'select', options: packs.map(p => [p.id, `${p.name} · ${N(p.days)} يوم · ${N(p.pointsCost)} نقطة`]) }))}${errBox}`,
-      K.btn('مراجعة العملية', 'protection-review', 'primary', `data-number="${E(number)}" data-company="${E(companyId)}" data-operation="${operation}"`) + K.btn('إلغاء', 'sheet-close'));
+    const details = [
+      ['الرقم', `<span class="ltr">${E(number)}</span>`],
+      ['الشركة', E(d.companies.find(c => c.id === companyId)?.name || '')],
+      ['رصيد النقاط', `${N(D.balance(ui.id, d))} نقطة`]
+    ].map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join('');
+    const packageOptions = packs.map(p => `<option value="${E(p.id)}">${E(p.name)} · ${N(p.days)} يوم · ${N(p.pointsCost)} نقطة</option>`).join('');
+    const summary = `<div class="kv protection-details">${details}<label class="kv-select-row" for="protectionPackage"><span>باقة الحماية</span><select id="protectionPackage" name="protectionPackage">${packageOptions}</select></label></div>${errBox}`;
+    openSheet(title, summary,
+      K.btn('مراجعة العملية', 'protection-review', 'primary', `data-number="${E(number)}" data-company="${E(companyId)}" data-operation="${operation}"`));
   }
   function protectionReviewSheet(number, companyId, operation) {
     const packageId = $('#protectionPackage')?.value;

@@ -170,7 +170,7 @@
       toast(`تم نسخ ${what}.`);
     } catch { toast(`تعذر النسخ. انسخه يدويًا: ${value}`, true); }
   }
-  const formFoot = label => K.submitBtn(label, 'sheet-form') + K.btn('إلغاء', 'sheet-close');
+  const formFoot = label => K.submitBtn(label, 'sheet-form');
   const errBox = '<div id="form-error" class="form-error hidden" role="alert"></div>';
 
   /* ===================== نوافذ العمليات ===================== */
@@ -188,7 +188,7 @@
     openSheet(ok ? 'اعتماد طلب النقاط' : 'رفض طلب النقاط',
       `<p class="sheet-text">${ok ? `سيُضاف ${strong(N(pk.points) + ' نقطة')} إلى رصيد ${E(c?.name || 'العميل')}، ويُسجَّل إيراد ${strong(N(pk.price) + ' ر.ي')} في السجل المالي مرة واحدة. الاعتماد يخص طلب الشراء فقط ولا ينشئ اشتراكًا لأي رقم.` : 'سيُرفض الطلب دون إضافة نقاط أو تسجيل إيراد، ولا يمكن مراجعته مرة ثانية. يرى العميل السبب في تفاصيل الطلب وفي إشعاره.'}</p>${dupWarn}
 <div class="fields"><div class="field"><label for="reviewNote">${ok ? 'ملاحظة المراجعة (تظهر للعميل، اختياري)' : 'سبب الرفض (يظهر للعميل)'}</label>${chips}<textarea id="reviewNote" name="note" rows="3" maxlength="300" placeholder="${ok ? 'يمكنك اختيار قالب أو كتابة نص' : 'اختر قالبًا وعدّل نصه أو اكتب السبب'}"></textarea></div></div>${errBox}`,
-      K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + (next ? K.btn(ok ? 'اعتماد وفتح التالي' : 'رفض وفتح التالي', 'review-confirm', '', `data-confirm data-next="${E(next)}" data-id="${E(id)}" data-decision="${decision}"`) : '') + K.btn('إلغاء', 'sheet-close'));
+      K.btn(ok ? 'تأكيد الاعتماد' : 'تأكيد الرفض', 'review-confirm', 'primary', `data-confirm data-id="${E(id)}" data-decision="${decision}"`) + (next ? K.btn(ok ? 'اعتماد وفتح التالي' : 'رفض وفتح التالي', 'review-confirm', '', `data-confirm data-next="${E(next)}" data-id="${E(id)}" data-decision="${decision}"`) : ''));
   }
   // تنفيذ كل مهمة على حدة (بنود 23 و92): لا تنفيذ جماعي؛ يؤكد المدير أنه سدّد فعليًا خارج النظام ثم يسجّل التنفيذ.
   function executeSheet(id) {
@@ -198,7 +198,7 @@
     openSheet(new Date(t.dueAt) > Date.now() ? 'تسجيل تنفيذ المهمة مبكرًا' : 'تسجيل تنفيذ المهمة',
       `<p class="sheet-text">الرقم ${n ? `<span class="ltr">${E(n.number)}</span>` : ''}. سيُسجَّل مصروف المهمة ${strong(N(t.expenseAmount) + ' ر.ي')} في السجل المالي مرة واحدة، وتُنشأ المهمة التالية من وقت التنفيذ الفعلي وفق إعدادات الشركة. لا يتغير رصيد نقاط العميل. لا يمكن تسجيل أكثر من مهمة في العملية الواحدة.</p>
 <div class="fields"><label class="toggle"><span>نفّذت السداد فعليًا عبر وسيلة الدفع الخارجية<small>التسجيل يوثّق ما تم؛ لا يُنفَّذ السداد من هنا.</small></span><input class="switch" type="checkbox" role="switch" id="paidConfirm"></label></div>${errBox}`,
-      K.btn('تسجيل التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + (next ? K.btn('تسجيل التنفيذ وفتح التالية', 'execute-confirm', '', `data-confirm data-next="${E(next.id)}" data-id="${E(id)}"`) : '') + K.btn('إلغاء', 'sheet-close'));
+      K.btn('تسجيل التنفيذ', 'execute-confirm', 'primary', `data-confirm data-id="${E(id)}"`) + (next ? K.btn('تسجيل التنفيذ وفتح التالية', 'execute-confirm', '', `data-confirm data-next="${E(next.id)}" data-id="${E(id)}"`) : ''));
   }
   function reschedSheet(id) {
     const t = D.read().tasks.find(x => x.id === id);
@@ -224,13 +224,13 @@
     openSheet('إنشاء إشعار إداري', `<form id="sheet-form" data-form="notice">${K.fields(K.field({ name: 'title', label: 'العنوان', required: true }) + K.field({ name: 'body', label: 'النص', type: 'textarea', required: true, rows: 3 }) + K.field({ name: 'audience', label: 'الجمهور', type: 'select', value: 'all', options: [['all', 'كل العملاء'], ['subscribers', 'المشتركون'], ['customer', 'عميل محدد']] }) + `<div id="notice-customer" class="hidden">${K.field({ name: 'customerId', label: 'العميل', type: 'select', options: d.customers.map(c => [c.id, c.name]) })}</div>`)}<p class="note">إشعار محلي في هذا التطبيق؛ لا يُرسل خارج المتصفح.</p>${errBox}</form>`, formFoot('إنشاء محليًا'));
   }
   function logoutSheet() {
-    openSheet('تسجيل الخروج', '<p class="sheet-text">ستنتهي جلسة الإدارة المحلية على هذا المتصفح. لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary') + K.btn('إلغاء', 'sheet-close'));
+    openSheet('تسجيل الخروج', '<p class="sheet-text">ستنتهي جلسة الإدارة المحلية على هذا المتصفح. لا تُحذف أي بيانات محفوظة.</p>', K.btn('تسجيل الخروج', 'logout-confirm', 'primary'));
   }
   // حذف تصنيف قرب انتهاء (U11): تأكيد بالأثر؛ لا يمس أي اشتراك أو إشعار سبق إنشاؤه
   function expiryDeleteSheet(coId, classId) {
     const d = D.read(), co = M.company(d, coId), k = X.forCompany(d, coId).classes.find(c => c.id === classId);
     if (!co || !k) return toast('التصنيف غير موجود.', true);
-    openSheet('حذف تصنيف', `<p class="sheet-text">سيُحذف التصنيف ${strong(E(k.name))} من شركة ${strong(E(co.name))}؛ لن تظهر شارته ولا فلتره بعد الآن، ولن يُنشأ إشعار جديد له. لا يتأثر أي اشتراك ولا إشعار سبق إنشاؤه. لا يمكن التراجع عن الحذف، ويمكنك إعادة إضافة التصنيف يدويًا.</p>${errBox}`, K.btn('تأكيد الحذف', 'exp-class-delete-confirm', 'primary', `data-confirm data-co="${E(coId)}" data-id="${E(classId)}"`) + K.btn('إلغاء', 'sheet-close'));
+    openSheet('حذف تصنيف', `<p class="sheet-text">سيُحذف التصنيف ${strong(E(k.name))} من شركة ${strong(E(co.name))}؛ لن تظهر شارته ولا فلتره بعد الآن، ولن يُنشأ إشعار جديد له. لا يتأثر أي اشتراك ولا إشعار سبق إنشاؤه. لا يمكن التراجع عن الحذف، ويمكنك إعادة إضافة التصنيف يدويًا.</p>${errBox}`, K.btn('تأكيد الحذف', 'exp-class-delete-confirm', 'primary', `data-confirm data-co="${E(coId)}" data-id="${E(classId)}"`));
   }
 
   /* ===================== معالجة النقر ===================== */
@@ -329,7 +329,7 @@
           toast(`أُزيل الوسم «${tag}».`, false, { fn: () => restoreTags(prev) });
         }); return;
         case 'note-add':
-          openSheet('ملاحظة داخلية', `<p class="sheet-text">لا تظهر للعميل أبدًا.</p><div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`) + K.btn('إلغاء', 'sheet-close')); setTimeout(() => $('#noteText')?.focus(), 50); return;
+          openSheet('ملاحظة داخلية', `<p class="sheet-text">لا تظهر للعميل أبدًا.</p><div class="fields"><div class="field"><label for="noteText">نص الملاحظة</label><textarea id="noteText" rows="4" maxlength="500"></textarea><small class="ferr hidden" id="noteText-err" role="alert"></small></div></div>${errBox}`, K.btn('حفظ الملاحظة', 'note-save', 'primary', `data-type="${E(b.dataset.type)}" data-id="${E(id)}"`)); setTimeout(() => $('#noteText')?.focus(), 50); return;
         case 'note-save': await run(async () => { await D.addInternalNote(ADMIN, b.dataset.type, id, $('#noteText')?.value || ''); closeSheet(); render(); toast('حُفظت الملاحظة الداخلية.'); }, 'note'); return;
         case 'note-delete': await run(async () => {
           const prev = (D.read().internalNotes || []).find(x => x.id === id); await D.deleteInternalNote(ADMIN, id); render();
