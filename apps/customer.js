@@ -8,7 +8,6 @@
   const ROUTES = ['home', 'subscriptions', 'numbers', 'buy', 'operations', 'points', 'orders', 'notifications', 'account', 'settings', 'security', 'help'];
   const PARENT = { orders: 'buy', settings: 'account', security: 'account' };
 
-  const DEMO = new URLSearchParams(location.search).get('demo') === '1'; // وضع المعاينة فقط: تعبئة بيانات الدخول وحساب العميل التجريبي
   const ui = { limit: 0, id: sessionStorage.getItem('aman.customer') || '', route: 'home', auth: 'login', q: '', co: '', lookup: null, sheet: false, busy: false, view: null, pending: null, key: '', scroll: {} };
 
   /* ===================== الدخول وتذكر البريد (البريد فقط) ===================== */
@@ -118,7 +117,7 @@
     const screen = $('#screen'), tabbar = $('#tabbar'), barEl = $('#bar'), keepTop = screen.scrollTop;
     if (!snap.c) {
       screen.className = 'screen auth auth-screen';
-      screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials(), DEMO) : S.signup();
+      screen.innerHTML = ui.auth === 'login' ? S.login(rememberedCredentials()) : S.signup();
       barEl.innerHTML = ''; tabbar.hidden = true; ui.view = null;
       if (ui.kicked) { ui.kicked = false; toast(D.LOGIN_BLOCKED_MESSAGE, true); }
       { // تركيز تلقائي على أول حقل فارغ في شاشات الدخول (البند 14)
@@ -495,20 +494,7 @@
         case 'login': {
           const email = String(fd.get('email')).trim().toLowerCase(), password = String(fd.get('password')), remember = fd.get('remember') === 'on';
           if (password.length < 4) throw new Error('كلمة المرور يجب ألا تقل عن 4 خانات.');
-          let c = D.read().customers.find(x => x.email.toLowerCase() === email);
-          /* حساب معاينة محلي مخصص لتسريع اختبار واجهة العميل فقط. */
-          if (DEMO && !c && email === 'demo@aman.test' && password === 'aman1234') {
-            const hash = await hashPassword(password);
-            const created = await D.transact('local-demo', 'customer_demo_created', x => {
-              const existing = x.customers.find(y => y.email.toLowerCase() === email);
-              if (existing) return { entityType: 'customer', entityId: existing.id, summary: 'استخدام حساب العميل التجريبي' };
-              const demo = { id: 'cus-aman-demo', accountId: 'AMAN-DEMO', name: 'عميل تجريبي', email, status: 'active', isSubscriber: false, createdAt: D.now(), authHash: hash };
-              x.customers.push(demo);
-              x.pointTransactions.push({ id: D.uid('pt'), customerId: demo.id, type: 'credit', points: 0, source: 'demo', sourceId: demo.id, createdAt: D.now(), description: 'حساب معاينة تجريبي' });
-              return { entityType: 'customer', entityId: demo.id, summary: 'إنشاء حساب العميل التجريبي' };
-            });
-            c = D.read().customers.find(x => x.id === created.result.entityId);
-          }
+          const c = D.read().customers.find(x => x.email.toLowerCase() === email);
           if (!c) throw new Error('البريد الإلكتروني غير مسجل.');
           if (!(await verifyPassword(password, c.authHash))) throw new Error('بيانات الدخول غير صحيحة.');
           if (!D.canLogin(c)) throw new Error(D.LOGIN_BLOCKED_MESSAGE); // بعد التحقق من كلمة المرور فقط حتى لا يُكشف وضع حساب لمن لا يملك بياناته

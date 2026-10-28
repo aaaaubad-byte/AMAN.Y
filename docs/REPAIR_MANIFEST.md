@@ -57,4 +57,4 @@
 - تعليمات/وثائق جرى تحديثها: `README.md`, `docs/BUSINESS_RULES.md`, `docs/CHANGELOG_FINAL.md`, `docs/RELEASE_CHECKLIST.md`, `docs/SCREEN_AND_FLOWS.md`, `docs/SEARCH_AND_ADD_NUMBER_REFERENCE_1_1.md`, `docs/SEARCH_RESULT_CARD_REFERENCE_1_1.md`, `docs/TEST_MATRIX.md`, `docs/TEST_REPORT.md`, `docs/TRACEABILITY_MATRIX.md`, `docs/VISUAL_REFINEMENT_REPORT.md`.
 - تقرير جديد: `docs/REPAIR_REPORT_2026-10-16.md`.
 - اختبارات الجولة الحالية: `npm test -- --test-reporter=dot` — 61 ناجحًا، 0 فشل؛ `node --check` لملفات JavaScript الأساسية — ناجح.
-- لا تُحمّل بيانات المعاينة تلقائيًا؛ يلزم `?demo=1` ومخزن فارغ، ولا تستبدل أداة التحميل أي بيانات قائمة.
+- ملاحظة تاريخية: أداة تحميل العينة التي كان هذا البيان يصفها أزيلت من واجهة المنتج في U17؛ بقيت بيانات الاختبارات في مجلد `tests/` فقط.

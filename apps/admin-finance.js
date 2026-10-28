@@ -7,7 +7,7 @@
   'use strict';
   const D = root.AmanData, U = root.AmanUI, K = root.AmanAdminKit, M = root.AmanAdminModel, S = root.AmanAdminScreens, R = root.AmanReports, EXP = root.AmanAdminExpiry;
   if (!D || !K || !R || !EXP || !S) return;
-  const E = K.esc, N = U.fmt, ADMIN = 'admin-demo';
+  const E = K.esc, N = U.fmt, ADMIN = 'admin-local';
   const money = v => `${v < 0 ? '−' : ''}${N(Math.abs(v))} ر.ي`;
   const small = t => `<small style="display:block;line-height:1.9;margin-top:4px">${t}</small>`;
   const stamp = iso => { try { return new Date(iso).toLocaleString('ar-YE-u-nu-latn', { timeZone: 'Asia/Aden', dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };

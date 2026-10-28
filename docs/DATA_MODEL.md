@@ -2,11 +2,11 @@
 
 ## جذر المخزن
 
-المفتاح الوحيد: `AMAN_SHARED_REGISTRY_V2`. قيمة المفتاح كائن JSON ذو `schemaVersion`, `revision`, `updatedAt` ومجموعات مترابطة. كل المعرّفات المحلية نصوص ثابتة بعد الإنشاء (UUID-like/معرّف seed)، والتعديل يحافظ على `id`. بيانات seed مصطنعة.
+المفتاح الوحيد: `AMAN_SHARED_REGISTRY_V2`. قيمة المفتاح كائن JSON ذو `schemaVersion`, `revision`, `updatedAt` ومجموعات مترابطة. يبدأ seed المنتج بمجموعات العمل فارغة؛ fixtures الاصطناعية محصورة في `tests/fixture-data.js` ولا تُحمّلها الواجهة. كل المعرّفات المحلية نصوص ثابتة بعد الإنشاء، والتعديل يحافظ على `id`.
 
 | المجموعة | المعرّف الأساسي | الحقول المهمة | العلاقات والقيود |
 |---|---|---|---|
-| `customers` | `id` | `accountId`, `name`, `email`, `status`, `createdAt`, `authHash`؛ الصفة مشتقة من الاعتمادات (للحسابات المحلية الجديدة) | الحساب منفصل عن الاشتراك. البريد فريد عند التسجيل في المحاكي. لا تخزن كلمة المرور التجريبية لحسابات seed. |
+| `customers` | `id` | `accountId`, `name`, `email`, `status`, `createdAt`, `authHash`؛ الصفة مشتقة من الاعتمادات (للحسابات المحلية الجديدة) | الحساب منفصل عن الاشتراك. البريد فريد عند التسجيل في المحاكي؛ لا تتضمن بذرة المنتج حسابات أو كلمات مرور افتراضية. |
 | `companies` | `id` | `name`, `prefixes[]`, `lengths[]`, `dailyRate`, `durations[]`, `taskSchedule{intervalDays,expenseAmount,unit}`, `active` | قيمة الاشتراك في `dailyRate` نقاط/يوم. قيمة تشغيل المهمة `expenseAmount` مالية. أطول بادئة مطابقة. |
 | `packages` | `id` | `name`, `points`, `price`, `active` | نقاط عدد صحيح موجب؛ `price` قيمة مالية، لقطة الطلب مستقلة عن التعديل اللاحق. |
 | `paymentMethods` | `id` | `name`, `summary`, `instructions`, `active` | تعليمات عرض، محفوظة بلقطة داخل كل طلب. لا يوجد اتصال مزود دفع. |

@@ -54,12 +54,12 @@
   const withBar = (title, sub, html, extra = {}) => ({ chrome: 'tabs', html: K.bar(title, sub) + html, ...extra });
 
   /* ===================== الدخول والتسجيل ===================== */
-  function login(saved, demo = false) {
+  function login(saved) {
     return `<div class="brand"><h1>أمان</h1><p>حماية أرقامك</p></div>
 <form id="login" data-form="login" novalidate>
  <h2>تسجيل الدخول</h2>
- ${K.authField({ id: 'l_email', name: 'email', label: 'البريد الإلكتروني', type: 'email', autocomplete: 'username', dir: 'ltr', value: saved.email || (demo ? 'demo@aman.test' : '') })}
- ${K.authField({ id: 'l_pass', name: 'password', label: 'كلمة المرور', type: 'password', minlength: 4, autocomplete: 'current-password', dir: 'ltr', value: demo ? 'aman1234' : '' })}
+ ${K.authField({ id: 'l_email', name: 'email', label: 'البريد الإلكتروني', type: 'email', autocomplete: 'username', dir: 'ltr', value: saved.email || '' })}
+ ${K.authField({ id: 'l_pass', name: 'password', label: 'كلمة المرور', type: 'password', minlength: 4, autocomplete: 'current-password', dir: 'ltr', value: '' })}
  <label class="remember"><input type="checkbox" name="remember" ${saved.enabled ? 'checked' : ''}><span>تذكرني وحفظ بيانات الدخول على هذا الجهاز</span></label>
  <div id="form-error" class="form-error hidden" role="alert"></div>
  <button class="btn primary" type="submit" data-submit>دخول</button>

@@ -6,7 +6,7 @@
   'use strict';
   const D = root.AmanData, U = root.AmanUI, K = root.AmanAdminKit, M = root.AmanAdminModel, AR = root.AmanAutoRenew, X = root.AmanExpiry, EXP = root.AmanAdminExpiry;
   if (!D || !K || !AR || !X || !EXP) return;
-  const E = K.esc, N = U.fmt, ADMIN = 'admin-demo';
+  const E = K.esc, N = U.fmt, ADMIN = 'admin-local';
   const small = t => `<small style="display:block;line-height:1.9;margin-top:4px">${t}</small>`;
   const stamp = iso => { try { return new Date(iso).toLocaleString('ar-YE-u-nu-latn', { timeZone: 'Asia/Aden', dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(iso || '').slice(0, 16); } };
   const RES = { renewed: ['تم', 'ok'], failed: ['فشل', 'bad'] };

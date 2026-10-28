@@ -5,7 +5,7 @@
   'use strict';
   const D = root.AmanData, U = root.AmanUI, K = root.AmanAdminKit, S = root.AmanAdminScreens, R = root.AmanReports, Sys = root.AmanSystem, X = root.AmanExpiry, EXP = root.AmanAdminExpiry;
   if (!D || !K || !Sys || !EXP) return;
-  const E = K.esc, N = U.fmt, ADMIN = 'admin-demo';
+  const E = K.esc, N = U.fmt, ADMIN = 'admin-local';
   const money = v => `${v < 0 ? '−' : ''}${N(Math.abs(v))} ر.ي`;
   const small = t => `<small style="display:block;line-height:1.9;margin-top:4px">${t}</small>`;
   const stamp = iso => { try { return new Date(iso).toLocaleString('ar-YE-u-nu-latn', { timeZone: 'Asia/Aden', dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(iso || '').slice(0, 16); } };
@@ -25,9 +25,9 @@
       K.row({ icon: 'wallet', title: 'مطابقة المدفوعات', sub: 'طلبات الشراء مقابل قيود الإيراد لكل وسيلة دفع', to: 'system/reconcile' }),
       K.row({ icon: 'clock', title: 'سجل تغييرات الإعدادات', sub: 'من غيّر ماذا ومتى', to: 'system/settings-log' }),
       K.row({ icon: 'repeat', title: 'سلة المحذوفات', sub: `${N(st.trash)} عنصر قابل للاستعادة`, to: 'system/trash' }),
-      K.row({ icon: 'lock', title: 'كلمة مرور الإدارة', sub: Sys.adminHash(d) ? 'غُيّرت من الافتراضية' : 'الافتراضية التجريبية؛ يُنصح بتغييرها', to: 'system/password' })
+      K.row({ icon: 'lock', title: 'كلمة مرور الإدارة', sub: Sys.adminHash(d) ? 'تم تعيين كلمة مرور محلية' : 'لم تُعيّن بعد', to: 'system/password' })
     ];
-    return view('النظام', 'حالة المعاينة المحلية', `${K.kv([['إصدار البنية', N(st.schemaVersion)], ['رقم المراجعة', N(st.revision)], ['آخر تحديث', E(stamp(st.updatedAt))], ['حجم البيانات', bytes(st.bytes)], ['العملاء', N(st.counts.customers)], ['الأرقام', N(st.counts.numbers)], ['الاشتراكات', N(st.counts.subscriptions)], ['القيود المالية', N(st.counts.financeEntries)]])}${K.note('البيانات محفوظة في متصفح هذا الجهاز فقط. لا يوجد نسخ تلقائي ولا مزامنة؛ صدّر نسخة بانتظام.')}${K.section('الأدوات')}${K.card(rows)}`);
+    return view('النظام', 'حالة النظام المحلي', `${K.kv([['إصدار البنية', N(st.schemaVersion)], ['رقم المراجعة', N(st.revision)], ['آخر تحديث', E(stamp(st.updatedAt))], ['حجم البيانات', bytes(st.bytes)], ['العملاء', N(st.counts.customers)], ['الأرقام', N(st.counts.numbers)], ['الاشتراكات', N(st.counts.subscriptions)], ['القيود المالية', N(st.counts.financeEntries)]])}${K.note('البيانات محفوظة في متصفح هذا الجهاز فقط. لا يوجد نسخ تلقائي ولا مزامنة؛ صدّر نسخة بانتظام.')}${K.section('الأدوات')}${K.card(rows)}`);
   }
   function integrity(d) {
     const list = Sys.checkIntegrity(d);
@@ -68,7 +68,7 @@ ${K.section('تفصيل المجموعات')}${K.card(rows)}
     return view('سلة المحذوفات', `${N(list.length)} عنصر`, list.length ? `${K.note('تُحفظ هنا القوالب والملاحظات الداخلية وتصنيفات قرب الانتهاء المحذوفة (حتى 100 عنصر). تُستعاد كنسخة جديدة إن لم يوجد تعارض.')}${K.card(list.map(t => K.row({ icon: 'repeat', title: (t.label || KIND[t.kind] || t.kind), sub: `${E(KIND[t.kind] || t.kind)} · ${E(stamp(t.deletedAt))}`, plain: true }) + `<div class="rowfoot">${K.btn('استعادة', 'sys-restore', 'small', `data-id="${E(t.id)}"`)}${K.btn('حذف نهائي', 'sys-purge', 'small', `data-id="${E(t.id)}"`)}</div>`))}` : K.empty('لا توجد عناصر محذوفة.', 'repeat', 'السلة فارغة'));
   }
   function password(d) {
-    return view('كلمة مرور الإدارة', '', `${K.callout('info', 'تنبيه', small('كلمة المرور تُخزَّن مجزأة (PBKDF2) على هذا الجهاز فقط، ولا تُحفظ نصًا صريحًا. الدخول الإداري في هذه المعاينة محلي وليس أمنًا حقيقيًا للإنتاج.'))}${K.fields(K.field({ name: 'cur', label: 'كلمة المرور الحالية', type: 'password' }) + K.field({ name: 'new', label: `كلمة المرور الجديدة (${Sys.PASSWORD_MIN} خانات فأكثر)`, type: 'password' }) + K.field({ name: 'conf', label: 'تأكيد كلمة المرور الجديدة', type: 'password' }))}<div style="margin-top:10px">${K.btn('تغيير كلمة المرور', 'sys-pw', 'primary', '', 'lock')}</div>`);
+    return view('كلمة مرور الإدارة', '', `${K.callout('info', 'تنبيه', small('كلمة المرور تُخزَّن مجزأة (PBKDF2) على هذا الجهاز فقط، ولا تُحفظ نصًا صريحًا. هذا الدخول المحلي ليس بديلًا عن مصادقة خادم إنتاجي.'))}${K.fields(K.field({ name: 'cur', label: 'كلمة المرور الحالية', type: 'password' }) + K.field({ name: 'new', label: `كلمة المرور الجديدة (${Sys.PASSWORD_MIN} خانات فأكثر)`, type: 'password' }) + K.field({ name: 'conf', label: 'تأكيد كلمة المرور الجديدة', type: 'password' }))}<div style="margin-top:10px">${K.btn('تغيير كلمة المرور', 'sys-pw', 'primary', '', 'lock')}</div>`);
   }
 
   const base = EXP.build;
@@ -121,7 +121,7 @@ ${K.section('تفصيل المجموعات')}${K.card(rows)}
       else if (a === 'sys-purge') { await Sys.trashPurge(D, ADMIN, b.dataset.id); toast('حُذف نهائيًا.'); rerender(); }
       else if (a === 'sys-pw') {
         const d = D.read(), h = Sys.adminHash(d), cur = val('f_cur'), nw = val('f_new');
-        const ok = h ? await Sys.verifyPassword(cur, h) : cur === 'admin1234';
+        const ok = !!h && await Sys.verifyPassword(cur, h);
         if (!ok) throw new Error('كلمة المرور الحالية غير صحيحة.');
         if (nw !== val('f_conf')) throw new Error('تأكيد كلمة المرور لا يطابق الجديدة.');
         if (nw === cur) throw new Error('الكلمة الجديدة مطابقة للحالية.');
@@ -147,18 +147,24 @@ ${K.section('تفصيل المجموعات')}${K.card(rows)}
     } catch { /* لا يمنع الحذف الأصلي */ }
   }, true);
 
-  // دخول الإدارة بكلمة مرور مغيّرة: يُتحقق هنا؛ بلا كلمة مغيّرة يبقى منطق admin.js الافتراضي كما هو
+  // إعداد كلمة المرور محليًا أول مرة، ثم التحقق منها عند كل دخول؛ لا توجد بيانات اعتماد افتراضية.
   document.addEventListener('submit', async e => {
     const f = e.target;
     if (!f || !f.dataset || f.dataset.form !== 'login') return;
-    let h = null; try { h = Sys.adminHash(D.read()); } catch { return; }
-    if (!h) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    const fd = new FormData(f), email = String(fd.get('email') || '').trim().toLowerCase(), pw = String(fd.get('password') || '');
-    const ok = email === 'admin@aman.test' && await Sys.verifyPassword(pw, h);
-    if (!ok) { const box = document.getElementById('l_pass-err'); if (box) { box.textContent = 'بيانات الإدارة غير صحيحة.'; box.classList.remove('hidden'); } return; }
-    if (fd.get('remember') === 'on') localStorage.setItem('aman.admin.remember', JSON.stringify({ email, enabled: true })); else localStorage.removeItem('aman.admin.remember');
-    sessionStorage.setItem('aman.admin', '1'); history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); location.reload();
+    const fd = new FormData(f), pw = String(fd.get('password') || ''), confirm = String(fd.get('confirm') || '');
+    const showError = (id, message) => { const box = document.getElementById(id); if (box) { box.textContent = message; box.classList.remove('hidden'); } };
+    try {
+      const h = Sys.adminHash(D.read());
+      if (h) {
+        if (!(await Sys.verifyPassword(pw, h))) throw new Error('كلمة المرور غير صحيحة.');
+      } else {
+        if (pw.length < Sys.PASSWORD_MIN) throw new Error(`كلمة المرور ${Sys.PASSWORD_MIN} خانات على الأقل.`);
+        if (pw !== confirm) { showError('l_pass_confirm-err', 'تأكيد كلمة المرور لا يطابقها.'); return; }
+        await Sys.setAdminPassword(D, ADMIN, await Sys.hashPassword(pw));
+      }
+      sessionStorage.setItem('aman.admin', '1'); history.replaceState({ amanAdmin: true, route: 'home', d: 0 }, '', '#/home'); location.reload();
+    } catch (err) { showError('l_pass-err', err?.message || 'تعذر إعداد كلمة مرور الإدارة.'); }
   }, true);
 
   root.AmanAdminSystem = { hub, integrity, backup, preview, reconcile, settingsLog, trash, password };

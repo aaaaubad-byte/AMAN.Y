@@ -1,4 +1,4 @@
-/* AMAN local reference data layer. Demo only; not production security or accounting. */
+/* AMAN local reference data layer. It is not production security or accounting. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -41,7 +41,7 @@
       numbers: [], numberLinks: [], subscriptions: [], protectionOperations: [], pointTransactions: [], tasks: [], operations: [],
       financeEntries: [], notifications: [], idempotencyKeys: [],
       notificationSettings: { subscriptionExpiring: true, purchaseStatus: true, taskUpdates: true, protectionUpdates: true },
-      admin: { id: 'admin-local', name: 'مدير النظام', email: 'admin@aman.test', darkMode: false, lockEnabled: false },
+      admin: { id: 'admin-local', name: 'مدير النظام', darkMode: false, lockEnabled: false },
       content: { terms: '', privacy: '', contact: '', faq: '' },
       settings: { customerClasses: { newWithinDays: null, premiumMinApprovedOrders: null } }
     };
@@ -53,7 +53,7 @@
     const legacy=Number(d.schemaVersion||1)<2;
     const hadNumberLinks=Array.isArray(d.numberLinks);const collections=['customers','companies','packages','protectionPackages','paymentMethods','purchaseRequests','numbers','numberLinks','subscriptions','protectionOperations','pointTransactions','tasks','operations','financeEntries','notifications','idempotencyKeys'];
     for(const k of collections){if(d[k]===undefined)d[k]=[];else if(!Array.isArray(d[k]))throw new Error(`بنية مجموعة ${k} غير صالحة؛ لم تُستبدل البيانات.`);}
-    if(!d.admin)d.admin={id:'admin-demo',name:'مدير تجريبي',email:'admin@aman.test',darkMode:false,lockEnabled:false};
+    if(!d.admin)d.admin={id:'admin-local',name:'مدير النظام',darkMode:false,lockEnabled:false};
     d.content={terms:'',privacy:'',contact:'',faq:'',...(d.content||{})};
     d.settings={...(d.settings||{}),customerClasses:{newWithinDays:null,premiumMinApprovedOrders:null,...(d.settings?.customerClasses||{})}};
     if(!Array.isArray(d.internalNotes))d.internalNotes=[];
@@ -67,7 +67,7 @@
     d.numbers.forEach((n,i)=>{n.id ||= `legacy-number-${i+1}`;n.number=digitsOnly(n.number||n.phone||'');n.customerId ||= d.customers.find(c=>c.email===n.customerEmail)?.id;let co=d.companies.find(c=>c.id===n.companyId||c.name===n.company)||companyFor(n.number,d);if(!co){co={id:'legacy-unknown-company',name:String(n.company||'شركة غير محددة (بيانات قديمة)'),prefixes:[],lengths:[9,10],dailyRate:0,durations:[],taskSchedule:{},active:false};if(!d.companies.some(x=>x.id===co.id))d.companies.push(co);}n.companyId=co.id;});
     if(!hadNumberLinks){d.numberLinks=[];for(const [i,n] of d.numbers.entries())if(n.customerId&&d.customers.some(c=>c.id===n.customerId))d.numberLinks.push({id:`legacy-number-link-${i+1}`,numberId:n.id,customerId:n.customerId,createdAt:n.addedAt||now()});}
     for(const [i,link] of d.numberLinks.entries()){link.id ||= `legacy-number-link-${i+1}`;link.numberId ||= link.number_id;link.customerId ||= link.customer_id;}
-    if(legacy&&!d.pointTransactions.length)for(const c of d.customers){const opening=Math.max(0,Number(c.balance||0));d.pointTransactions.push({id:`legacy-opening-${c.id}`,customerId:c.id,type:'credit',points:opening,source:'migration',sourceId:c.id,createdAt:c.createdAt||now(),description:'رصيد محوّل من بيانات المعاينة القديمة'});}
+    if(legacy&&!d.pointTransactions.length)for(const c of d.customers){const opening=Math.max(0,Number(c.balance||0));d.pointTransactions.push({id:`legacy-opening-${c.id}`,customerId:c.id,type:'credit',points:opening,source:'migration',sourceId:c.id,createdAt:c.createdAt||now(),description:'رصيد محوّل من البيانات المحلية السابقة'});}
     d.pointTransactions.forEach((x,i)=>{x.id ||= `legacy-point-${i+1}`;x.type=x.type==='debit'?'debit':'credit';x.points=Math.max(0,Number(x.points||0));});
     d.purchaseRequests.forEach((r,i)=>{r.id ||= `legacy-request-${i+1}`;r.status=({'قيد المراجعة':'pending','مكتملة':'approved','مرفوضة':'rejected'})[r.status]||r.status||'pending';r.packageSnapshot ||= {name:r.name||'باقة قديمة',points:Number(r.points||0),price:Number(r.price||0)};r.paymentMethodSnapshot ||= {name:r.paymentMethod||'وسيلة قديمة',instructions:r.paymentInstructions||'تعليمات غير محفوظة'};});
     d.subscriptions.forEach((s,i)=>{s.id ||= `legacy-subscription-${i+1}`;let n=d.numbers.find(x=>x.id===s.numberId||x.number===String(s.number||s.phone||'').replace(/\D/g,''));if(!n&&s.customerId){const co=d.companies.find(c=>c.id===s.companyId)||d.companies[0];n={id:`legacy-sub-number-${i+1}`,customerId:s.customerId,number:String(s.number||s.phone||`00000000${i}`).replace(/\D/g,''),companyId:co?.id||'legacy-unknown-company',addedAt:s.createdAt||now(),status:'active'};d.numbers.push(n);}s.numberId=n?.id||s.numberId;s.companyId ||= n?.companyId;s.days=Number(s.days||s.duration||0);s.rateSnapshot=Number(s.rateSnapshot||s.dailyRate||1);s.pointsCost=Number(s.pointsCost||s.days*s.rateSnapshot);s.status ||= 'active';});
@@ -152,7 +152,7 @@
       const p=db.packages.find(x=>x.id===packageId&&x.active!==false),m=db.paymentMethods.find(x=>x.id===paymentMethodId&&x.active!==false);
       if(!p||!m) throw new Error('الباقة أو وسيلة الدفع غير متاحة.');
       if(!Number.isInteger(Number(p.points))||Number(p.points)<=0||!Number.isFinite(Number(p.price))||Number(p.price)<=0)throw new Error('قيم الباقة غير صالحة.');
-      if(!String(reference||'').trim()) throw new Error('أدخل مرجع إثبات الدفع التجريبي.');
+      if(!String(reference||'').trim()) throw new Error('أدخل مرجع إثبات الدفع.');
       if(db.purchaseRequests.some(r=>r.customerId===customerId&&r.paymentReference===String(reference).trim())) throw new Error('مرجع الدفع استُخدم في طلب سابق بالفعل.');
       const r={id:uid('req'),customerId,packageId:p.id,packageSnapshot:{name:p.name,points:Number(p.points),price:Number(p.price)},paymentMethodId:m.id,paymentMethodSnapshot:{name:m.name,instructions:m.instructions},paymentReference:String(reference).trim(),status:'pending',createdAt:now(),reviewedAt:null,reviewNote:null,pointTransactionId:null};db.purchaseRequests.push(r);
       return {entityType:'purchase_request',entityId:r.id,summary:`طلب باقة ${p.name}`};

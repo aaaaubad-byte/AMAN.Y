@@ -151,7 +151,7 @@ ${K.toolbar('ابحث برقم الهاتف أو العميل أو الشركة'
     const withAl = insertAfterRow(html, 'data-to="unrecorded"', alRow);
     return { ...v, html: withAl == null ? html + K.card([alRow]) : withAl };
   }
-  const OLD_NOTICE_HELP = 'إعداد فقط؛ لا ينشئ مجدولًا خلفيًا في هذه المعاينة';
+  const OLD_NOTICE_HELP = 'إعداد محلي؛ لا يوجد مجدول خلفي';
   const NEW_NOTICE_HELP = 'يتحكم بإنشاء إشعارات قرب الانتهاء المعرّفة في تصنيفات الشركات؛ يُجرى التقييم عند فتح الإدارة أو بزر إعادة التقييم';
   const decorateNotices = v => ({ ...v, html: v.html.replace(OLD_NOTICE_HELP, NEW_NOTICE_HELP) });
 

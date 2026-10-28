@@ -13,26 +13,27 @@
     account_deleted: 'حذف الحساب', admin_notice_created: 'إرسال إشعار إداري', admin_password_changed: 'تغيير كلمة مرور الإدارة', admin_setting_changed: 'تغيير إعداد إداري',
     autorenew_company_saved: 'حفظ إعداد التجديد التلقائي', backup_exported: 'تصدير نسخة احتياطية', backup_imported: 'استيراد نسخة احتياطية', backup_reminder_saved: 'حفظ تذكير النسخ الاحتياطي',
     company_saved: 'حفظ بيانات الشركة', content_updated: 'تعديل المحتوى', coupon_deleted: 'حذف قسيمة', coupon_redeemed: 'استخدام قسيمة', coupon_saved: 'حفظ قسيمة',
-    customer_classes_saved: 'حفظ تصنيفات العملاء', customer_demo_created: 'إنشاء حساب معاينة', customer_registered: 'تسجيل عميل', customer_status_changed: 'تغيير حالة عميل', customer_tag_removed: 'إزالة وسم عميل', customer_tags_added: 'إضافة وسوم للعملاء', customer_tags_restored: 'استعادة وسوم العملاء',
-    daily_close: 'إقفال يومي', daily_close_reopened: 'إعادة فتح إقفال يومي', demo_fixture_loaded: 'تحميل بيانات المعاينة', expiry_autorenew_class_saved: 'ربط التجديد بتصنيف', expiry_class_deleted: 'حذف تصنيف قرب انتهاء', expiry_class_saved: 'حفظ تصنيف قرب انتهاء', expiry_notices_created: 'إنشاء تنبيهات قرب الانتهاء',
+    customer_classes_saved: 'حفظ تصنيفات العملاء', customer_registered: 'تسجيل عميل', customer_status_changed: 'تغيير حالة عميل', customer_tag_removed: 'إزالة وسم عميل', customer_tags_added: 'إضافة وسوم للعملاء', customer_tags_restored: 'استعادة وسوم العملاء',
+    daily_close: 'إقفال يومي', daily_close_reopened: 'إعادة فتح إقفال يومي', expiry_autorenew_class_saved: 'ربط التجديد بتصنيف', expiry_class_deleted: 'حذف تصنيف قرب انتهاء', expiry_class_saved: 'حفظ تصنيف قرب انتهاء', expiry_notices_created: 'إنشاء تنبيهات قرب الانتهاء',
     finance_entry_reversed: 'عكس قيد مالي', internal_note_added: 'إضافة ملاحظة داخلية', internal_note_deleted: 'حذف ملاحظة داخلية', internal_note_restored: 'استعادة ملاحظة داخلية', manual_finance_entry: 'إضافة قيد مالي يدوي', notification_read: 'قراءة إشعار', number_added: 'إضافة رقم', number_restricted_for_late_renewal: 'تقييد رقم لتجاوز موعد التجديد', number_restriction_cleared: 'رفع تقييد رقم', number_restriction_restored: 'استعادة تقييد رقم',
     package_saved: 'حفظ باقة نقاط', password_changed: 'تغيير كلمة المرور', password_hash_upgraded: 'تحديث حماية كلمة المرور', payment_method_saved: 'حفظ وسيلة دفع', promotion_awarded: 'منح مكافأة عرض', promotion_deleted: 'حذف عرض', promotion_saved: 'حفظ عرض', protection_package_saved: 'حفظ باقة حماية', purchase_cancelled: 'إلغاء طلب شراء', purchase_requested: 'إنشاء طلب شراء',
     protection_activate: 'تفعيل الحماية', protection_extend: 'تمديد الحماية', protection_renew: 'تجديد الحماية', radar_toggled: 'تغيير متابعة الاشتراك', subscription_activated: 'تفعيل اشتراك', subscription_extended: 'تمديد اشتراك', subscription_activated_or_extended: 'تفعيل أو تمديد اشتراك', support_ticket_admin_reply: 'رد الإدارة على تذكرة', support_ticket_created: 'إنشاء تذكرة دعم', support_ticket_customer_reply: 'رد العميل على تذكرة', support_ticket_note_added: 'إضافة ملاحظة لتذكرة',
     task_executed: 'تسجيل تنفيذ مهمة', task_rescheduled: 'إعادة جدولة مهمة', task_settings_saved: 'حفظ إعدادات المهام', template_deleted: 'حذف قالب', template_restored: 'استعادة قالب', template_saved: 'حفظ قالب', trash_purged: 'إفراغ سلة المحذوفات', trash_restored: 'استعادة عنصر محذوف'
   };
   const AUDIT_ENTITIES = {
-    admin: 'الإدارة', admin_setting: 'إعداد إداري', autorenew_company: 'إعداد التجديد التلقائي', backup: 'نسخة احتياطية', company: 'شركة', content: 'محتوى', coupon: 'قسيمة', coupon_redemption: 'استخدام قسيمة', customer: 'عميل', customer_tags: 'وسوم العملاء', daily_close: 'إقفال يومي', demo_fixture: 'بيانات المعاينة', expiry_autorenew: 'إعداد تجديد تلقائي', expiry_class: 'تصنيف قرب الانتهاء', finance_entry: 'قيد مالي', internal_note: 'ملاحظة داخلية', notification: 'إشعار', number: 'رقم', number_link: 'ربط رقم', package: 'باقة نقاط', payment_method: 'وسيلة دفع', promotion: 'عرض', promotion_award: 'مكافأة عرض', protection_operation: 'عملية حماية', protection_package: 'باقة حماية', purchase_request: 'طلب شراء', settings: 'إعدادات', subscription: 'اشتراك', support_ticket: 'تذكرة دعم', task: 'مهمة', task_settings: 'إعدادات المهام', template: 'قالب', trash: 'عنصر محذوف'
+    admin: 'الإدارة', admin_setting: 'إعداد إداري', autorenew_company: 'إعداد التجديد التلقائي', backup: 'نسخة احتياطية', company: 'شركة', content: 'محتوى', coupon: 'قسيمة', coupon_redemption: 'استخدام قسيمة', customer: 'عميل', customer_tags: 'وسوم العملاء', daily_close: 'إقفال يومي', expiry_autorenew: 'إعداد تجديد تلقائي', expiry_class: 'تصنيف قرب الانتهاء', finance_entry: 'قيد مالي', internal_note: 'ملاحظة داخلية', notification: 'إشعار', number: 'رقم', number_link: 'ربط رقم', package: 'باقة نقاط', payment_method: 'وسيلة دفع', promotion: 'عرض', promotion_award: 'مكافأة عرض', protection_operation: 'عملية حماية', protection_package: 'باقة حماية', purchase_request: 'طلب شراء', settings: 'إعدادات', subscription: 'اشتراك', support_ticket: 'تذكرة دعم', task: 'مهمة', task_settings: 'إعدادات المهام', template: 'قالب', trash: 'عنصر محذوف'
   };
 
   /* ------------------------------------------------------------------ */
-  function login(saved, demo = false) {
+  function login(hasPassword = false, minimum = 8) {
     return { chrome: 'auth', auth: true, html: `<div class="brand"><h1>أمان</h1><p>إدارة نظام أمان</p></div>
+<h2>${hasPassword ? 'تسجيل دخول الإدارة' : 'إعداد كلمة مرور الإدارة'}</h2>
+${hasPassword ? '' : '<p class="note">أنشئ كلمة مرور خاصة بهذا المتصفح. تُحفظ مجزأة محليًا، ولا يمكن استعادتها إذا نُسيت.</p>'}
 <form id="admin-login" data-form="login">
- <div class="afield"><label for="l_email">البريد الإلكتروني</label><input id="l_email" name="email" type="email" autocomplete="username" dir="ltr" style="text-align:right" value="${E(saved.email || (demo ? 'admin@aman.test' : ''))}" required aria-describedby="l_email-err"><small class="ferr hidden" id="l_email-err" role="alert"></small></div>
- <div class="afield"><label for="l_pass">كلمة المرور</label><input id="l_pass" name="password" type="password" minlength="4" autocomplete="current-password" dir="ltr" style="text-align:right" value="${demo ? 'admin1234' : ''}" required aria-describedby="l_pass-err"><small class="ferr hidden" id="l_pass-err" role="alert"></small></div>
- <label class="remember"><input type="checkbox" name="remember" ${saved.enabled ? 'checked' : ''}><span>تذكرني وحفظ بيانات الدخول على هذا الجهاز</span></label>
+ <div class="afield"><label for="l_pass">${hasPassword ? 'كلمة المرور' : 'كلمة مرور جديدة'}</label><input id="l_pass" name="password" type="password" minlength="${minimum}" autocomplete="${hasPassword ? 'current-password' : 'new-password'}" required aria-describedby="l_pass-err"><small class="ferr hidden" id="l_pass-err" role="alert"></small></div>
+ ${hasPassword ? '' : `<div class="afield"><label for="l_pass_confirm">تأكيد كلمة المرور</label><input id="l_pass_confirm" name="confirm" type="password" minlength="${minimum}" autocomplete="new-password" required aria-describedby="l_pass_confirm-err"><small class="ferr hidden" id="l_pass_confirm-err" role="alert"></small></div>`}
  <div id="form-error" class="form-error hidden" role="alert"></div>
- <button class="btn primary" type="submit" data-submit>دخول</button>
+ <button class="btn primary" type="submit" data-submit>${hasPassword ? 'دخول' : 'حفظ كلمة المرور والدخول'}</button>
 </form>` };
   }
 
@@ -42,12 +43,9 @@
     const avail = d.tasks.filter(t => M.taskAvailableNow(t, d, D));
     const soon = d.subscriptions.filter(s => M.isLive(s) && new Date(s.endsAt) <= Date.now() + 7 * 86400000);
     const open = d.tasks.filter(t => ['due', 'planned'].includes(t.status)).length;
-    const demoKeys = ['customers', 'companies', 'packages', 'paymentMethods', 'purchaseRequests', 'numbers', 'subscriptions', 'pointTransactions', 'tasks', 'operations', 'financeEntries', 'notifications', 'idempotencyKeys', 'protectionPackages', 'protectionOperations', 'numberLinks'];
-    const demoEmpty = demoKeys.every(k => !(d[k] || []).length);
-    const demo = ui.demo ? `<div class="section"><span>بيانات معاينة محلية</span></div><div class="card"><p class="note in-card">سجلات مصطنعة للاختبار فقط. لا تُحمّل فوق أي مخزن يحتوي بيانات، ولا تستخدمها للإنتاج.</p><div style="padding:0 16px 16px">${demoEmpty ? K.btn('تحميل بيانات الاختبار', 'demo-seed') : '<p class="note" style="margin:0">المخزن غير فارغ؛ لن تُستبدل أي بيانات.</p>'}</div></div>` : '';
     const chip = `<button type="button" id="financeTop" class="chip-black" data-act="go" data-to="finance" title="صافي الإيرادات ناقص المصروفات؛ ليس رصيد النقدية" aria-label="السجل المالي: صافي الإيرادات ناقص المصروفات، وليس رصيد النقدية"><span class="dot">${K.ico('spark')}</span>${YER(fin.net)}</button>`;
-    return { tab: 'home', chrome: 'tabs', html: `<header class="lead">${chip}<div class="lead-end">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}${K.tileAction('go', 'user', 'الحساب الإداري', 'data-to="account"')}</div></header>
-<h1 class="display">لوحة الإدارة</h1><p class="lede">ملخص التشغيل الحالي ومهام المراجعة.</p>${demo}
+    return { tab: 'home', chrome: 'tabs', html: `<header class="lead"><div class="lead-end">${K.tileAction('go', 'search', 'البحث الشامل', 'data-to="search"')}${K.tileAction('go', 'user', 'الحساب الإداري', 'data-to="account"')}</div></header>
+<h1 class="display">لوحة الإدارة</h1><p class="lede">ملخص التشغيل الحالي ومهام المراجعة.</p>
 <div style="margin-top:14px">${K.metrics([['العملاء', N(d.customers.length)], ['الأرقام', N(d.numbers.length)], ['المهام المفتوحة', N(open)]])}</div>
 ${K.section('يحتاج إلى إجراء')}
 ${K.card([
@@ -429,11 +427,11 @@ ${K.section('إعدادات المهام')}${K.kv([['الفاصل بين الم�
   /* ------------------------------------------------------------------ */
   function notices(d) {
     const x = d.notificationSettings || {}, log = d.notifications.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    return { chrome: 'tabs', tab: 'more', html: `${K.bar('الإشعارات', 'محلية داخل هذه المعاينة', K.tileAction('notice-open', 'plus', 'إنشاء إشعار إداري'))}
+    return { chrome: 'tabs', tab: 'more', html: `${K.bar('الإشعارات', 'محلية في هذا المتصفح', K.tileAction('notice-open', 'plus', 'إنشاء إشعار إداري'))}
 ${K.section('أنواع إشعارات النظام')}${K.fields(
       K.toggle('purchaseStatus', 'حالة طلب شراء النقاط', x.purchaseStatus, 'يُرسل للعميل عند اعتماد الطلب أو رفضه', 'data-setting="purchaseStatus"') +
       K.toggle('taskUpdates', 'تحديثات المهام', x.taskUpdates, 'عند تنفيذ مهمة على رقم للعميل', 'data-setting="taskUpdates"') +
-      K.toggle('subscriptionExpiring', 'قرب انتهاء الاشتراك', x.subscriptionExpiring, 'إعداد فقط؛ لا ينشئ مجدولًا خلفيًا في هذه المعاينة', 'data-setting="subscriptionExpiring"'))}
+      K.toggle('subscriptionExpiring', 'قرب انتهاء الاشتراك', x.subscriptionExpiring, 'إعداد محلي؛ لا يوجد مجدول خلفي', 'data-setting="subscriptionExpiring"'))}
 ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(log.slice(0, 100).map(n => K.row({ icon: 'bell', tone: n.readAt ? '' : 'dark', title: n.title, sub: E(n.body), sub2: `إلى ${E(M.customer(d, n.customerId)?.name || '—')} · ${n.readAt ? 'مقروء' : 'غير مقروء'}` }))) : K.empty('لا توجد إشعارات محلية بعد.', 'bell')}${log.length > 100 ? K.note('يعرض أحدث 100 إشعار.') : ''}` };
   }
 
@@ -478,7 +476,7 @@ ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(lo
         return K.row({ icon: 'audit', title: summary, sub: `${E(typeLabel)} · ${E(entityLabel)}`, sub2: `${E(DT(o.createdAt))} · المنفذ ${E(o.actorId || 'النظام')}`, pill: K.pill(resultLabel, result === 'success' ? 'ok' : 'bad') });
       })) + (rows.length > 300 ? K.note('يعرض أحدث 300 حدث من أصل ' + N(rows.length) + '.') : '');
     };
-    return { chrome: 'tabs', tab: 'more', list, html: `${K.bar('سجل التدقيق', 'أحداث المخزن المحلي')}<p class="note" style="margin-top:-6px">سجل محلي للأحداث المسجلة داخل هذه المعاينة؛ لا يمثل سجلًا آمنًا ضد تعديل بيانات المتصفح.</p>${K.toolbar('ابحث في الأحداث', ui.q)}<div id="listbody">${list()}</div>` };
+    return { chrome: 'tabs', tab: 'more', list, html: `${K.bar('سجل التدقيق', 'أحداث المخزن المحلي')}<p class="note" style="margin-top:-6px">سجل محلي للأحداث؛ لا يمثل سجلًا آمنًا ضد تعديل بيانات المتصفح.</p>${K.toolbar('ابحث في الأحداث', ui.q)}<div id="listbody">${list()}</div>` };
   }
 
   function search(d, ui) {
@@ -501,9 +499,9 @@ ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(lo
 
   function account(d) {
     const dark = localStorage.getItem('aman.customer.theme') === 'dark';
-    return { chrome: 'tabs', tab: 'more', html: `${K.bar('الحساب الإداري', d.admin.email)}
-<div class="hero"><div class="hero-top">${K.tile('user')}<div><h2>${E(d.admin.name)}</h2><p class="ltr">${E(d.admin.email)}</p></div></div><small>معرّف الإدارة</small><div class="ltr" style="font-size:16px;font-weight:700">${E(d.admin.id)}</div></div>
-<p class="note">هذه جلسة إدارة تجريبية محلية، وليست مصادقة إنتاجية.</p>
+    return { chrome: 'tabs', tab: 'more', html: `${K.bar('الحساب الإداري', 'حساب محلي')}
+<div class="hero"><div class="hero-top">${K.tile('user')}<div><h2>${E(d.admin.name)}</h2><p>إدارة محلية على هذا المتصفح</p></div></div></div>
+<p class="note">هذه الجلسة محلية وليست مصادقة إنتاجية.</p>
 ${K.section('المظهر')}${K.fields(K.toggle('adminDark', 'الوضع الداكن', dark, 'يُشارك مع تفضيل مظهر تطبيق العميل على هذا المتصفح', 'id="adminDark"'))}
 ${K.section('البيانات')}${K.card([K.row({ icon: 'download', title: 'تنزيل نسخة احتياطية للبيانات', sub: 'ملف JSON محلي قد يتضمن بيانات شخصية؛ احفظه في مكان خاص', act: 'export-data' })])}
 <div style="margin-top:20px">${K.btn('تسجيل الخروج', 'logout-open', '', '', 'logout')}</div>` };
