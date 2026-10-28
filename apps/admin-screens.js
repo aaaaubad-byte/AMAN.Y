@@ -9,6 +9,20 @@
   const RS = { pending: 'معلقة', approved: 'معتمدة', rejected: 'مرفوضة' };
   const SRC = { manual: 'قيد يدوي', purchase: 'بيع نقاط', task: 'مصروف مهمة', reversal: 'قيد عكسي' };
   const match = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(q.trim().toLowerCase());
+  const AUDIT_TYPES = {
+    account_deleted: 'حذف الحساب', admin_notice_created: 'إرسال إشعار إداري', admin_password_changed: 'تغيير كلمة مرور الإدارة', admin_setting_changed: 'تغيير إعداد إداري',
+    autorenew_company_saved: 'حفظ إعداد التجديد التلقائي', backup_exported: 'تصدير نسخة احتياطية', backup_imported: 'استيراد نسخة احتياطية', backup_reminder_saved: 'حفظ تذكير النسخ الاحتياطي',
+    company_saved: 'حفظ بيانات الشركة', content_updated: 'تعديل المحتوى', coupon_deleted: 'حذف قسيمة', coupon_redeemed: 'استخدام قسيمة', coupon_saved: 'حفظ قسيمة',
+    customer_classes_saved: 'حفظ تصنيفات العملاء', customer_demo_created: 'إنشاء حساب معاينة', customer_registered: 'تسجيل عميل', customer_status_changed: 'تغيير حالة عميل', customer_tag_removed: 'إزالة وسم عميل', customer_tags_added: 'إضافة وسوم للعملاء', customer_tags_restored: 'استعادة وسوم العملاء',
+    daily_close: 'إقفال يومي', daily_close_reopened: 'إعادة فتح إقفال يومي', demo_fixture_loaded: 'تحميل بيانات المعاينة', expiry_autorenew_class_saved: 'ربط التجديد بتصنيف', expiry_class_deleted: 'حذف تصنيف قرب انتهاء', expiry_class_saved: 'حفظ تصنيف قرب انتهاء', expiry_notices_created: 'إنشاء تنبيهات قرب الانتهاء',
+    finance_entry_reversed: 'عكس قيد مالي', internal_note_added: 'إضافة ملاحظة داخلية', internal_note_deleted: 'حذف ملاحظة داخلية', internal_note_restored: 'استعادة ملاحظة داخلية', manual_finance_entry: 'إضافة قيد مالي يدوي', notification_read: 'قراءة إشعار', number_added: 'إضافة رقم', number_restricted_for_late_renewal: 'تقييد رقم لتجاوز موعد التجديد', number_restriction_cleared: 'رفع تقييد رقم', number_restriction_restored: 'استعادة تقييد رقم',
+    package_saved: 'حفظ باقة نقاط', password_changed: 'تغيير كلمة المرور', password_hash_upgraded: 'تحديث حماية كلمة المرور', payment_method_saved: 'حفظ وسيلة دفع', promotion_awarded: 'منح مكافأة عرض', promotion_deleted: 'حذف عرض', promotion_saved: 'حفظ عرض', protection_package_saved: 'حفظ باقة حماية', purchase_cancelled: 'إلغاء طلب شراء', purchase_requested: 'إنشاء طلب شراء',
+    protection_activate: 'تفعيل الحماية', protection_extend: 'تمديد الحماية', protection_renew: 'تجديد الحماية', radar_toggled: 'تغيير متابعة الاشتراك', subscription_activated: 'تفعيل اشتراك', subscription_extended: 'تمديد اشتراك', subscription_activated_or_extended: 'تفعيل أو تمديد اشتراك', support_ticket_admin_reply: 'رد الإدارة على تذكرة', support_ticket_created: 'إنشاء تذكرة دعم', support_ticket_customer_reply: 'رد العميل على تذكرة', support_ticket_note_added: 'إضافة ملاحظة لتذكرة',
+    task_executed: 'تسجيل تنفيذ مهمة', task_rescheduled: 'إعادة جدولة مهمة', task_settings_saved: 'حفظ إعدادات المهام', template_deleted: 'حذف قالب', template_restored: 'استعادة قالب', template_saved: 'حفظ قالب', trash_purged: 'إفراغ سلة المحذوفات', trash_restored: 'استعادة عنصر محذوف'
+  };
+  const AUDIT_ENTITIES = {
+    admin: 'الإدارة', admin_setting: 'إعداد إداري', autorenew_company: 'إعداد التجديد التلقائي', backup: 'نسخة احتياطية', company: 'شركة', content: 'محتوى', coupon: 'قسيمة', coupon_redemption: 'استخدام قسيمة', customer: 'عميل', customer_tags: 'وسوم العملاء', daily_close: 'إقفال يومي', demo_fixture: 'بيانات المعاينة', expiry_autorenew: 'إعداد تجديد تلقائي', expiry_class: 'تصنيف قرب الانتهاء', finance_entry: 'قيد مالي', internal_note: 'ملاحظة داخلية', notification: 'إشعار', number: 'رقم', number_link: 'ربط رقم', package: 'باقة نقاط', payment_method: 'وسيلة دفع', promotion: 'عرض', promotion_award: 'مكافأة عرض', protection_operation: 'عملية حماية', protection_package: 'باقة حماية', purchase_request: 'طلب شراء', settings: 'إعدادات', subscription: 'اشتراك', support_ticket: 'تذكرة دعم', task: 'مهمة', task_settings: 'إعدادات المهام', template: 'قالب', trash: 'عنصر محذوف'
+  };
 
   /* ------------------------------------------------------------------ */
   function login(saved, demo = false) {
@@ -449,7 +463,20 @@ ${K.section('سجل الإشعارات', N(log.length))}${log.length ? K.card(lo
     const list = () => {
       const rows = all.filter(o => match(ui.q, o.summary, o.type, o.entityType, o.entityId, o.actorId));
       if (!rows.length) return emptyQ(!!ui.q, 'لا توجد أحداث تطابق البحث.', 'لا توجد أحداث مسجلة بعد.', 'audit');
-      return K.card(rows.slice(0, 300).map(o => K.row({ icon: 'audit', title: o.summary || o.type || 'عملية', sub: `${E(o.type || '—')} · ${E(o.entityType || '—')}`, sub2: `${E(DT(o.createdAt))} · المنفذ ${E(o.actorId || 'system')}`, pill: K.pill(o.result || 'success', (o.result || 'success') === 'success' ? 'ok' : 'bad') }))) + (rows.length > 300 ? K.note('يعرض أحدث 300 حدث من أصل ' + N(rows.length) + '.') : '');
+      return K.card(rows.slice(0, 300).map(o => {
+        const type = String(o.type || '');
+        const typeLabel = AUDIT_TYPES[type] || 'حدث مسجل';
+        const entityLabel = AUDIT_ENTITIES[String(o.entityType || '')] || 'سجل عام';
+        let summary = String(o.summary || '');
+        if (type === 'content_updated') {
+          const contentNames = { terms: 'الشروط', privacy: 'الخصوصية', contact: 'التواصل', faq: 'الأسئلة الشائعة' };
+          summary = summary.replace(/^تعديل محتوى (terms|privacy|contact|faq)$/, (_, key) => `تعديل ${contentNames[key]}`);
+        }
+        if (!summary || summary === type) summary = typeLabel;
+        const result = o.result || 'success';
+        const resultLabel = result === 'success' ? 'نجاح' : 'فشل';
+        return K.row({ icon: 'audit', title: summary, sub: `${E(typeLabel)} · ${E(entityLabel)}`, sub2: `${E(DT(o.createdAt))} · المنفذ ${E(o.actorId || 'النظام')}`, pill: K.pill(resultLabel, result === 'success' ? 'ok' : 'bad') });
+      })) + (rows.length > 300 ? K.note('يعرض أحدث 300 حدث من أصل ' + N(rows.length) + '.') : '');
     };
     return { chrome: 'tabs', tab: 'more', list, html: `${K.bar('سجل التدقيق', 'أحداث المخزن المحلي')}<p class="note" style="margin-top:-6px">سجل محلي للأحداث المسجلة داخل هذه المعاينة؛ لا يمثل سجلًا آمنًا ضد تعديل بيانات المتصفح.</p>${K.toolbar('ابحث في الأحداث', ui.q)}<div id="listbody">${list()}</div>` };
   }

@@ -5,9 +5,9 @@
 @font-face{font-family:AMANCustomer;src:url('../fonts/AMAN-Arabic-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
 
 :root{
-  --bg:#f1f3f2;--card:#fff;--ink:#0b0c0c;--muted:#737d87;--tile:#e6e8e9;--line:#eceeee;
+  --bg:#f1f3f2;--card:#fff;--ink:#0b0c0c;--muted:#5e6873;--tile:#e6e8e9;--line:#eceeee;
   --black:#000;--on-black:#fff;--hero:#222525;--on-hero:#fff;--hero-muted:#aab2b0;
-  --overlay:rgba(0,0,0,.36);--tab-bg:rgba(243,245,244,.94);--tab-off:#8a9292;
+  --overlay:rgba(0,0,0,.36);--tab-bg:rgba(243,245,244,.94);--tab-off:#656f6f;
   --ok:#137a55;--ok-bg:#e1f3ea;--warn:#8a5a00;--warn-bg:#fbefd5;--bad:#b3261e;--bad-bg:#fbe4e1;--accent:#1da57c;
   --r-card:16px;--r-tile:12px;--r-btn:14px;--r-sheet:20px;--pad:20px;--tabbar:56px;
   --font:AMANCustomer,Tahoma,Arial,sans-serif;
