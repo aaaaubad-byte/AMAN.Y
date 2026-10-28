@@ -252,7 +252,7 @@
     } catch { toast(`تعذر النسخ. انسخه يدويًا: ${value}`, true); }
   }
   const errBox = '<div id="form-error" class="form-error hidden" role="alert"></div>';
-  const textSheet = (title, text) => openSheet(title, `<p class="sheet-text">${E(text)}</p>`, K.btn('إغلاق', 'sheet-close', 'primary'));
+  const textSheet = (title, text) => openSheet(title, `<p class="sheet-text">${E(text)}</p>`);
 
   /* ===================== نوافذ العمليات ===================== */
   const data = () => (ui.id ? D.readForCustomer(ui.id) : D.read());
@@ -346,7 +346,7 @@
   function numberNotificationsSheet(id) {
     const d = data(), n = ownedNumber(d, id); if (!n) return;
     const list = S.notices(d, ui.id).filter(x => x.numberId === n.id || String(x.body || '').includes(n.number));
-    openSheet('إشعارات الرقم', `<p class="sheet-text ltr">${E(n.number)}</p>${list.length ? K.card(list.map(x => K.row({ icon: 'bell', title: x.title, sub: E(x.body), sub2: `${U.date(x.createdAt)} · ${x.readAt ? 'مقروء' : 'جديد'}`, act: 'notice-open', attrs: `data-id="${E(x.id)}"` }))) : K.empty('لا توجد إشعارات مرتبطة بهذا الرقم.', 'bell')}`, K.btn('إغلاق', 'sheet-close', 'primary'));
+    openSheet('إشعارات الرقم', `<p class="sheet-text ltr">${E(n.number)}</p>${list.length ? K.card(list.map(x => K.row({ icon: 'bell', title: x.title, sub: E(x.body), sub2: `${U.date(x.createdAt)} · ${x.readAt ? 'مقروء' : 'جديد'}`, act: 'notice-open', attrs: `data-id="${E(x.id)}"` }))) : K.empty('لا توجد إشعارات مرتبطة بهذا الرقم.', 'bell')}`);
   }
   /* ----- الترحيب بثلاث خطوات (بند 69): مرة واحدة لكل حساب جديد، ويُعاد عرضه من المساعدة ----- */
   const welcomeKey = () => 'aman.customer.welcome.' + ui.id;
@@ -417,7 +417,7 @@
             catch (err) { failed.push(`${it.number}: ${err?.message || 'تعذرت العملية'}`); }
           }
           closeSheet(); render();
-          if (failed.length) openSheet('نتيجة التجديد', `<p class="sheet-text">تم ${N(done.length)} من ${N(plan.items.length)}. العمليات التي لم تتم لم تُخصم نقاطها.</p>${K.card(failed.map(t => K.row({ icon: 'info', title: t, plain: true })))}`, K.btn('إغلاق', 'sheet-close', 'primary'));
+          if (failed.length) openSheet('نتيجة التجديد', `<p class="sheet-text">تم ${N(done.length)} من ${N(plan.items.length)}. العمليات التي لم تتم لم تُخصم نقاطها.</p>${K.card(failed.map(t => K.row({ icon: 'info', title: t, plain: true })))}`);
           else toast(`جُدّد ${N(done.length)} ${done.length === 1 ? 'رقم' : 'أرقام'} وخُصمت ${N(plan.total)} نقطة.`);
         }); return;
         case 'protection-path': protectionPathSheet(b.dataset.number, b.dataset.company, b.dataset.operation); return;
@@ -441,12 +441,12 @@
         case 'notice-open': {
           const n = S.notices(data(), ui.id).find(x => x.id === id); if (!n) return;
           await D.markNoticeRead(ui.id, n.id);
-          openSheet(n.title, `<p class="sheet-text" style="color:var(--ink)">${E(n.body)}</p><p class="note">${U.date(n.createdAt)}</p>`, K.btn('إغلاق', 'sheet-close', 'primary'));
+          openSheet(n.title, `<p class="sheet-text" style="color:var(--ink)">${E(n.body)}</p><p class="note">${U.date(n.createdAt)}</p>`);
           render(); return;
         }
         case 'operation-detail': {
           const v = S.operationDetail(data(), b.dataset.kind, id, data().customers[0]); if (!v) return;
-          openSheet(v.title, v.body, (v.foot || '') + K.btn('إغلاق', 'sheet-close', v.foot ? '' : 'primary')); return;
+          openSheet(v.title, v.body, v.foot || ''); return;
         }
         case 'order-cancel': {
           await D.cancelPurchase(ui.id, id); closeSheet(); render(); toast('أُلغي الطلب. لم تُخصم أو تُضف أي نقاط.'); return;

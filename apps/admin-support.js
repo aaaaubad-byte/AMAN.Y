@@ -23,7 +23,7 @@
   function inbox(d, route) {
     const q = route.split('/')[1] || 'all', key = FILTERS.some(f => f[0] === q) ? q : 'all', c = SP.inboxCounts(d), list = SP.inbox(d, key);
     const chips = `<div class="tpl-chips" role="group" aria-label="تصفية التذاكر">${FILTERS.map(([k, l]) => chip(`${l} (${N(c[k])})`, `support/${k}`, k === key)).join('')}</div>`;
-    const rows = list.map(t => K.row({ icon: 'inbox', tone: t.unreadAdmin ? 'warn' : '', title: t.subject, sub: `${E(custName(d, t.customerId))} · ${E(SP.TICKET_STATUS[t.status])}`, sub2: E(stamp(SP.lastAt(t))), pill: t.unreadAdmin ? K.pill('جديد', 'bad') : K.pill(SP.TICKET_STATUS[t.status], TONE[t.status]), to: `support-ticket/${t.id}` }));
+    const rows = list.map(t => K.row({ icon: 'inbox', tone: t.unreadAdmin ? 'warn' : '', title: t.subject, sub: `${E(custName(d, t.customerId))}${t.unreadAdmin ? ` · ${E(SP.TICKET_STATUS[t.status])}` : ''}`, sub2: E(stamp(SP.lastAt(t))), pill: t.unreadAdmin ? K.pill('جديد', 'bad') : K.pill(SP.TICKET_STATUS[t.status], TONE[t.status]), to: `support-ticket/${t.id}` }));
     return view('صندوق الدعم', `${N(c.unread)} غير مقروءة`, `${chips}${rows.length ? K.card(rows) : K.empty(c.all ? 'لا توجد تذاكر في هذا التصنيف.' : 'لا توجد تذاكر بعد. تظهر هنا حين يفتحها العملاء من تطبيقهم.', 'inbox', 'لا توجد تذاكر')}`);
   }
   const bubble = m => `<div style="margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid rgba(128,128,128,.3);${m.from === 'admin' ? 'margin-inline-start:24px' : 'margin-inline-end:24px'}"><small style="display:block;opacity:.7">${m.from === 'admin' ? 'الدعم' : 'العميل'} · ${E(stamp(m.at))}</small><div style="white-space:pre-wrap;line-height:1.8">${E(m.text)}</div></div>`;

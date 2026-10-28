@@ -95,12 +95,10 @@ ${K.toolbar('ابحث باسم العميل أو مرجع الدفع', ui.q)}<di
     const r = d.purchaseRequests.find(x => x.id === id);
     if (!r) return missing('الطلب غير موجود.');
     const c = M.customer(d, r.customerId), pk = r.packageSnapshot || {}, pm = r.paymentMethodSnapshot || {}, pend = r.status === 'pending';
-    const html = `<div class="hero"><div class="hero-top">${K.tile('receipt')}<div><h2>${E(c?.name || 'عميل غير موجود')}</h2><p>${E(c?.email || '—')}</p></div></div><small>${E(pk.name || 'باقة قديمة')}</small><div class="big">${N(pk.points)}<em>نقطة</em></div><small>القيمة المالية ${YER(pk.price)}</small><span class="pill ${r.status === 'approved' ? 'ok' : ''}">${M.status(r.status)}</span></div>
-${pend ? `<div style="margin-top:12px">${K.callout('info', 'ما الذي يحدث عند الاعتماد؟', `<small style="display:block;line-height:1.9;margin-top:4px">• تُضاف ${N(pk.points)} نقطة إلى رصيد العميل في دفتر النقاط.<br>• يُسجَّل إيراد ${YER(pk.price)} في السجل المالي، وهو مستقل عن النقاط.<br>• لا يُنشأ اشتراك لأي رقم؛ تفعيل الحماية يتم من رصيد العميل لاحقًا.<br>• الرفض لا يضيف نقاطًا ولا إيرادًا.</small>`, true)}</div>` : ''}
-${dupBlock(d, r)}${K.section('بيانات الطلب')}${K.kv([['العميل', c ? E(c.name) : '—'], ['الباقة المحفوظة', `${E(pk.name || '—')} · ${N(pk.points)} نقطة`], ['القيمة المالية', YER(pk.price)], ['الحالة', M.status(r.status), true], ['تاريخ الإنشاء', E(DT(r.createdAt))], ['تاريخ المراجعة', E(DT(r.reviewedAt))]])}
-${K.section('بيانات الدفع (لقطة وقت الطلب)')}${K.kv([['وسيلة الدفع', E(pm.name || '—')], ['تعليمات الدفع', E(pm.instructions || '—')], ['مرجع الإثبات', ltr(r.paymentReference || '—') + (r.paymentReference ? K.copyBtn(r.paymentReference, 'المرجع') : '')], ['رقم الطلب', ltr(r.id) + K.copyBtn(r.id, 'رقم الطلب')]])}
-${notesSection(d, 'request', r.id)}${r.reviewNote ? K.section('ملاحظة المراجعة') + `<div class="card"><p class="note in-card" style="color:var(--ink)">${E(r.reviewNote)}</p></div>` : ''}
-${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `${M.kindLabel(M.customerKind(d, c))} · رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
+    const html = `${pend ? `<div style="margin-top:4px">${K.callout('info', 'أثر القرار', '<small style="display:block;line-height:1.8">عند الاعتماد تُضاف النقاط إلى رصيد العميل في دفتر النقاط، ويُسجَّل الإيراد في السجل المالي. لا يُنشأ اشتراك لأي رقم. عند الرفض لا تُضاف نقاط ولا يُسجَّل إيراد.</small>', true)}</div>` : ''}
+${dupBlock(d, r)}${K.section('تفاصيل الطلب')}${K.kv([['العميل', c ? E(c.name) : '—'], ['رصيد النقاط', c ? `${N(D.balance(c.id, d))} نقطة` : '—'], ['الباقة والنقاط', `${E(pk.name || 'باقة قديمة')} · ${N(pk.points)} نقطة`], ['القيمة المالية', YER(pk.price)], ['الحالة', M.status(r.status), true], ['تاريخ الإنشاء', E(DT(r.createdAt))], ['تاريخ المراجعة', E(DT(r.reviewedAt))], ['وسيلة الدفع', E(pm.name || '—')], ['تعليمات الدفع', E(pm.instructions || '—')], ['مرجع الإثبات', ltr(r.paymentReference || '—') + (r.paymentReference ? K.copyBtn(r.paymentReference, 'المرجع') : '')], ['رقم الطلب', ltr(r.id) + K.copyBtn(r.id, 'رقم الطلب')]])}
+${notesSection(d, 'request', r.id)}${r.reviewNote ? K.note(`ملاحظة المراجعة: ${r.reviewNote}`) : ''}
+${c ? `<div style="margin-top:8px">${K.btn('فتح حساب العميل', 'go', 'small', `data-to="customer/${c.id}"`)}</div>` : ''}`;
     return { chrome: 'focus', title: 'طلب شراء نقاط', sub: DY(r.createdAt), html, bar: pend ? `<div class="actionbar two">${K.btn('اعتماد الطلب', 'review-open', 'primary', `data-id="${E(r.id)}" data-decision="approved"`)}${K.btn('رفض الطلب', 'review-open', '', `data-id="${E(r.id)}" data-decision="rejected"`)}</div>` : '' };
   }
 
@@ -194,7 +192,7 @@ ${K.toolbar('ابحث بالاسم أو البريد أو المعرّف أو ا
     if (!c) return missing('العميل غير موجود.');
     const want = a === 'ops' ? 'timeline' : a, tab = ['numbers', 'requests', 'subs', 'timeline'].includes(want) ? want : 'numbers';
     const ns = D.customerNumbers(id, d), rs = d.purchaseRequests.filter(r => r.customerId === id).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt)), subs = d.subscriptions.filter(s => s.customerId === id).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
-    const isSub = M.customerKind(d, c) === 'subscriber', badges = M.customerBadges(d, c), tl = tab === 'timeline' ? M.customerTimeline(d, id) : [];
+    const badges = M.customerBadges(d, c), tl = tab === 'timeline' ? M.customerTimeline(d, id) : [];
     let body;
     if (tab === 'numbers') body = ns.length ? K.card(ns.map(n => { const s = D.activeSubscription(d, n.id), co = M.company(d, n.companyId); return K.row({ icon: 'phone', title: n.number, ltr: true, sub: E(co?.name || '—'), sub2: s ? `ينتهي ${E(DY(s.endsAt))}` : 'لا يوجد اشتراك فعال', pill: K.pill(s ? M.status(s.status) : 'بلا اشتراك', s ? 'ok' : ''), to: 'number/' + n.id }); })) : K.empty('لا توجد أرقام مرتبطة بالحساب.', 'phone');
     else if (tab === 'requests') body = rs.length ? K.card(rs.map(r => K.row({ icon: 'receipt', tone: r.status === 'approved' ? 'ok' : r.status === 'pending' ? 'warn' : 'bad', title: r.packageSnapshot?.name || 'باقة قديمة', sub: `${N(r.packageSnapshot?.points)} نقطة · ${YER(r.packageSnapshot?.price)}`, sub2: `المرجع ${E(r.paymentReference || '—')} · ${E(DT(r.createdAt))}`, pill: K.pill(M.status(r.status), M.tone(r.status)), to: 'request/' + r.id }))) : K.empty('لا توجد طلبات نقاط.', 'receipt');
@@ -203,10 +201,10 @@ ${K.toolbar('ابحث بالاسم أو البريد أو المعرّف أو ا
     const restr = M.restrictionList(c, D), limited = c.status === 'suspended' || c.status === 'blocked';
     const statusBlock = limited ? K.callout('lock', c.status === 'blocked' ? 'الحساب محظور' : 'الحساب موقوف', `<small style="display:block;line-height:1.9;margin-top:4px">${c.statusReason ? 'السبب: ' + E(c.statusReason) + '<br>' : ''}الأثر: ${E(restr.join('، ') || '—')}.${c.statusChangedAt ? '<br>منذ ' + E(DT(c.statusChangedAt)) : ''}<br>لا يرى العميل السبب؛ تظهر له رسالة عامة عند الدخول أو العملية الممنوعة.</small>`) : '';
     const tagsHtml = (c.tags || []).map(t => `<span class="tagchip">${E(t)}<button type="button" class="tagx" data-act="cust-tag-remove" data-id="${E(id)}" data-tag="${E(t)}" aria-label="إزالة الوسم ${E(t)}">${K.ico('close')}</button></span>`).join('') || '<span class="rsub">لا توجد وسوم.</span>';
-    const html = `<div class="hero"><div class="hero-top">${K.tile(isSub ? 'shield' : 'user')}<div><h2>${E(c.name)}</h2><p class="ltr">${E(c.email)}</p></div></div><small>رصيد نقاط أمان</small><div class="big">${N(D.balance(id, d))}<em>نقطة</em></div><div class="hero-badges">${badgePills(badges)}</div></div>
+    const html = `<div class="hero center"><small>رصيد نقاط أمان</small><div class="big">${N(D.balance(id, d))}<em>نقطة</em></div><div class="hero-badges">${badgePills(badges)}</div></div>
 ${statusBlock ? `<div style="margin-top:12px">${statusBlock}</div>` : ''}
 <p class="note">الرصيد مشتق من دفتر النقاط. «مشترك» = اعتُمد له طلب شراء نقاط واحد على الأقل، وغير ذلك «مستخدم»؛ وليست مدة اشتراك أي رقم (تجدها في تبويب الأرقام). المبالغ بالريال في السجل المالي العام.</p>
-${K.section('بيانات الحساب')}${K.kv([['الاسم', E(c.name)], ['البريد الإلكتروني', ltr(c.email)], ['معرّف الحساب', ltr(c.accountId || c.id)], ['الصفة', M.kindLabel(M.customerKind(d, c))], ['الحالة', E(M.CUSTOMER_STATUS[c.status || 'active'] || c.status)]])}
+${K.section('بيانات الحساب')}${K.kv([['البريد الإلكتروني', ltr(c.email)], ['معرّف الحساب', ltr(c.accountId || c.id)], ['الصفة', M.kindLabel(M.customerKind(d, c))], ['الحالة', E(M.CUSTOMER_STATUS[c.status || 'active'] || c.status)]])}
 ${K.section('الوسوم')}<div class="tagrow">${tagsHtml}</div>${c.status === 'deleted' ? '' : `<div style="margin-top:10px">${K.btn('إضافة وسم', 'cust-tag-open', '', `data-mode="add" data-ids="${E(id)}"`, 'plus')}</div>`}
 ${K.section('إجراءات')}<div class="btn-stack">${c.status === 'deleted' ? '' : K.btn('تغيير حالة الحساب (إيقاف / حظر)', 'cust-status-open', '', `data-id="${E(id)}"`, 'lock')}${K.btn('نسخ بيانات العميل', 'copy', '', `data-copy="${E(M.customerCopyText(d, c, D))}" data-label="بيانات العميل"`, 'doc')}</div>
 ${notesSection(d, 'customer', id)}
@@ -254,14 +252,13 @@ ${K.toolbar('ابحث برقم الهاتف أو العميل أو الشركة'
     const sub = D.activeSubscription(d, n.id) || d.subscriptions.filter(x => x.numberId === n.id).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt))[0];
     const c = M.customer(d, n.customerId), co = M.company(d, n.companyId);
     const plan = sub ? d.tasks.filter(t => t.subscriptionId === sub.id).sort((x, y) => new Date(x.dueAt) - new Date(y.dueAt)) : [];
-    const live = M.isLive(sub);
-    const html = `<div class="hero"><div class="hero-top">${K.tile('phone')}<div><h2 class="ltr">${E(n.number)}</h2><p>${E(co?.name || 'شركة غير معروفة')}</p></div></div><small>مدة الاشتراك</small><div class="big" style="font-size:24px">${sub ? `${E(DY(sub.startsAt))} — ${E(DY(sub.endsAt))}` : 'لا يوجد اشتراك'}</div><span class="pill ${live ? 'ok' : ''}">${sub ? M.status(sub.status) : 'بلا اشتراك'}</span></div>
+    const details = [['الشركة', E(co?.name || 'شركة غير معروفة')], ['المالك', E(c?.name || '—')], ['البريد الإلكتروني', c ? ltr(c.email) : '—'], ['رصيد النقاط', c ? `${N(D.balance(c.id, d))} نقطة` : '—'], ['حالة الرقم', n.restricted ? `مقيّد: ${E(n.restrictionReason || '—')}` : 'غير مقيّد'], ['حالة الاشتراك', sub ? E(M.status(sub.status)) : 'لا يوجد اشتراك']];
+    if (sub) details.push(['بداية الاشتراك', E(DY(sub.startsAt))], ['تاريخ الانتهاء', E(DY(sub.endsAt))], ['المدة', `${N(sub.days)} يوم`], ['التعرفة المحفوظة', `${N(sub.rateSnapshot)} نقطة/يوم`], ['تكلفة العملية', `${N(sub.pointsCost)} نقطة`]);
+    const html = `${K.kv(details)}
 <p class="note">الإدارة للاطلاع فقط؛ تفعيل الاشتراك وتمديده يتمان من واجهة العميل ومن رصيد نقاطه.</p>
-${K.section('المالك والشركة')}${K.kv([['المالك', E(c?.name || '—')], ['البريد الإلكتروني', c ? ltr(c.email) : '—'], ['الشركة', E(co?.name || '—')], ['حالة التقييد', n.restricted ? `مقيّد: ${E(n.restrictionReason || '—')}` : 'غير مقيّد']])}
-${K.section('الاشتراك')}${sub ? K.kv([['الحالة', E(M.status(sub.status)), true], ['بداية الاشتراك', E(DY(sub.startsAt))], ['المدة والانتهاء', `${N(sub.days)} يوم · ${E(DY(sub.endsAt))}`], ['التعرفة المحفوظة', `${N(sub.rateSnapshot)} نقطة/يوم`], ['تكلفة العملية', `${N(sub.pointsCost)} نقطة`]]) : K.empty('لا يوجد سجل اشتراك مرتبط بهذا الرقم.', 'shield')}
 ${sub ? K.section(`مخطط المهام (${plan.length})`) + (plan.length ? K.card(plan.map(t => { const cl = M.taskClass(t, d, D); return K.row({ icon: 'tasks', tone: cl === 'completed' ? 'ok' : '', title: DT(t.dueAt), sub: `${YER(t.expenseAmount)} · ${t.executedAt ? 'نُفذت ' + E(DT(t.executedAt)) : 'غير منفذة'}`, pill: K.pill(M.TASK_LABEL[cl], M.TASK_TONE[cl]), to: 'task/' + t.id }); })) : K.empty('لا توجد مهام لهذا الاشتراك.', 'tasks')) : ''}
 ${holdersBlock(d, n)}${notesSection(d, 'number', n.id)}
-${c ? K.section('الحساب') + K.card([K.row({ icon: 'user', title: c.name, sub: `رصيد ${N(D.balance(c.id, d))} نقطة`, to: 'customer/' + c.id })]) : ''}`;
+${c ? `<div style="margin-top:8px">${K.btn('فتح حساب العميل', 'go', 'small', `data-to="customer/${c.id}"`)}</div>` : ''}`;
     return { chrome: 'focus', title: 'تفاصيل الرقم', sub: n.number, subLtr: true, html, bar: n.restricted ? `<div class="actionbar">${K.btn('رفع التقييد', 'unrestrict', 'primary', `data-id="${E(n.id)}"`)}</div>` : '' };
   }
 
@@ -337,29 +334,27 @@ ${g('النظام', [
     if (!c) return missing('الشركة غير موجودة.');
     const sc = c.taskSchedule || {}, plans = (d.protectionPackages || []).filter(x => x.companyId === c.id), on = c.active !== false;
     const yn = v => v ? 'نعم' : 'لا';
-    const html = `${entityHero('building', c.name, 'شركة ضمن إعدادات أمان الحالية', on, 'فعالة', 'متوقفة')}
-<div style="margin-top:12px">${K.metrics([['البادئات', N((c.prefixes || []).length)], ['أطوال الأرقام', N((c.lengths || []).length)], ['باقات الحماية', N(plans.length)]])}</div>
-${K.section('المعلومات الأساسية')}${K.kv([['اسم الشركة', E(c.name)], ['بادئات الأرقام', E((c.prefixes || []).join('، ') || '—')], ['أطوال الأرقام', E((c.lengths || []).map(N).join('، ') || '—')], ['الحالة', on ? 'فعالة' : 'متوقفة']])}
+    const html = `${K.section('بيانات الشركة')}${K.kv([['الحالة', on ? 'فعالة' : 'متوقفة'], ['بادئات الأرقام', E((c.prefixes || []).join('، ') || '—')], ['أطوال الأرقام', E((c.lengths || []).map(N).join('، ') || '—')], ['عدد الباقات', N(plans.length)]])}
 ${K.section('باقات الحماية')}${plans.length ? K.card(plans.map(p => K.row({ icon: 'shield', title: p.name, sub: `${taskDays(p.days)} · ${N(p.pointsCost)} نقطة`, pill: K.pill(p.active ? 'متاحة' : 'متوقفة', p.active ? 'ok' : 'bad'), to: 'protection/' + p.id }))) : K.empty('لا توجد باقات حماية مرتبطة بهذه الشركة.', 'shield')}
 ${K.section('إعدادات المهام')}${K.kv([['الفاصل بين المهام', taskDays(sc.intervalDays)], ['مصروف المهمة', YER(sc.expenseAmount)], ['إنشاء أول مهمة عند التفعيل', yn(sc.createFirstOnActivation !== false)], ['الظهور قبل الاستحقاق', taskDays(sc.visibleBeforeDays ?? 1)], ['السماح بإعادة الجدولة', yn(sc.allowReschedule !== false)], ['إنشاء مهام بعد انتهاء الحماية', yn(!!sc.createAfterExpiry)], ['السماح بالتنفيذ خلال فترة السماح', yn(!!sc.allowDuringGrace)], ['مدة فترة السماح', taskDays(sc.graceDays || 0)]])}
-<div style="margin-top:12px">${K.card([K.row({ icon: 'sliders', title: 'تعديل إعدادات المهام', sub: 'الخيارات الثمانية لهذه الشركة', to: `company/${c.id}/tasks` })])}</div>`;
+<div style="margin-top:8px">${K.btn('تعديل إعدادات المهام', 'go', 'small', `data-to="company/${c.id}/tasks"`)}</div>`;
     return { chrome: 'focus', title: 'تفاصيل الشركة', sub: c.name, html, end: editEnd(`company/${c.id}/edit`) };
   }
   function pkg(d, id) {
     const p = d.packages.find(x => x.id === id);
     if (!p) return missing('الباقة غير موجودة.');
-    return { chrome: 'focus', title: 'تفاصيل الباقة', sub: p.name, end: editEnd(`package/${p.id}/edit`), html: `${entityHero('box', p.name, 'باقة نقاط', p.active, 'متاحة للشراء', 'متوقفة')}${K.section('بيانات الباقة')}${K.kv([['اسم الباقة', E(p.name)], ['عدد النقاط', N(p.points)], ['السعر المالي', YER(p.price)], ['الحالة', p.active ? 'متاحة للشراء' : 'متوقفة']])}<p class="note">الطلبات السابقة تحتفظ بلقطة قديمة من الباقة، فلا يغيّر التعديل نقاطها ولا أسعارها.</p>` };
+    return { chrome: 'focus', title: 'تفاصيل الباقة', sub: p.name, end: editEnd(`package/${p.id}/edit`), html: `${K.kv([['عدد النقاط', N(p.points)], ['السعر المالي', YER(p.price)], ['الحالة', p.active ? 'متاحة للشراء' : 'متوقفة']])}<p class="note">الطلبات السابقة تحتفظ بلقطة قديمة من الباقة، فلا يغيّر التعديل نقاطها ولا أسعارها.</p>` };
   }
   function prot(d, id) {
     const p = (d.protectionPackages || []).find(x => x.id === id);
     if (!p) return missing('باقة الحماية غير موجودة.');
     const co = M.company(d, p.companyId);
-    return { chrome: 'focus', title: 'تفاصيل باقة الحماية', sub: p.name, end: editEnd(`protection/${p.id}/edit`), html: `${entityHero('shield', p.name, co?.name || 'شركة غير محددة', p.active, 'متاحة', 'متوقفة')}${K.section('بيانات الباقة')}${K.kv([['الباقة', E(p.name)], ['الشركة', E(co?.name || '—')], ['المدة', taskDays(p.days)], ['التكلفة', `${N(p.pointsCost)} نقطة`], ['الحالة', p.active ? 'متاحة' : 'متوقفة']])}<p class="note">باقة الحماية مستقلة عن باقة النقاط: تحدد المدة والتكلفة بالنقاط، وتحفظ كل عملية لقطة تاريخية مستقلة.</p>` };
+    return { chrome: 'focus', title: 'تفاصيل باقة الحماية', sub: p.name, end: editEnd(`protection/${p.id}/edit`), html: `${K.kv([['الشركة', E(co?.name || '—')], ['المدة', taskDays(p.days)], ['التكلفة', `${N(p.pointsCost)} نقطة`], ['الحالة', p.active ? 'متاحة' : 'متوقفة']])}<p class="note">باقة الحماية مستقلة عن باقة النقاط: تحدد المدة والتكلفة بالنقاط، وتحفظ كل عملية لقطة تاريخية مستقلة.</p>` };
   }
   function pay(d, id) {
     const m = d.paymentMethods.find(x => x.id === id);
     if (!m) return missing('وسيلة الدفع غير موجودة.');
-    return { chrome: 'focus', title: 'تفاصيل وسيلة الدفع', sub: m.name, end: editEnd(`payment/${m.id}/edit`), html: `${entityHero('card', m.name, 'تظهر للعميل عند شراء النقاط', m.active, 'متاحة', 'متوقفة')}${K.section('بيانات الدفع')}${K.kv([['اسم الوسيلة', E(m.name)], ['البيان المختصر', E(m.summary || '—')], ['تعليمات الدفع', E(m.instructions || '—')], ['الحالة', m.active ? 'متاحة' : 'متوقفة']])}<p class="note">الطلبات السابقة تحتفظ بلقطة من التعليمات وقت إنشائها.</p>` };
+    return { chrome: 'focus', title: 'تفاصيل وسيلة الدفع', sub: m.name, end: editEnd(`payment/${m.id}/edit`), html: `${K.kv([['البيان المختصر', E(m.summary || '—')], ['تعليمات الدفع', E(m.instructions || '—')], ['الحالة', m.active ? 'متاحة' : 'متوقفة']])}<p class="note">تظهر هذه الوسيلة للعميل عند شراء النقاط. الطلبات السابقة تحتفظ بلقطة من التعليمات وقت إنشائها.</p>` };
   }
 
   /* ----- النماذج ----- */

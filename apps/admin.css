@@ -65,7 +65,7 @@ h1,h2,h3,p{margin:0}
 .chip-black svg{width:14px;height:14px}
 
 /* ===== العناوين الفرعية والأقسام ===== */
-.section{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;max-width:340px;margin:16px auto 7px;color:var(--muted);font-size:13px}
+.section{display:flex;align-items:baseline;justify-content:space-between;gap:10px;width:100%;max-width:340px;margin:14px auto 7px;color:var(--muted);font-size:13px}
 .section b{font-weight:400}
 .section+.card,.section+.list{margin-top:0}
 .note{color:var(--muted);font-size:13px;line-height:1.7;margin:10px 2px}
@@ -74,8 +74,8 @@ h1,h2,h3,p{margin:0}
 /* ===== البطاقات والصفوف ===== */
 .card{background:var(--card);border-radius:var(--r-card);overflow:hidden}
 .card,.hero,.fields,.kv,.metrics,.list,.stackgap,.toolbar,.empty,.callout,.result,.amount,.stages,.tagrow,.selrow{width:100%;max-width:340px;margin-inline:auto}
-.stackgap,.list{display:grid;gap:8px}
-.row{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:8px 11px;position:relative;text-align:start;color:inherit}
+.stackgap,.list{display:grid;gap:7px}
+.row{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:7px 10px;position:relative;text-align:start;color:inherit}
 button.row:active{background:rgba(0,0,0,.04)}
 .row+.row::before{content:"";position:absolute;top:0;inset-inline-start:70px;inset-inline-end:0;border-top:1px solid var(--line)}
 .row.plain+.row.plain::before{inset-inline-start:16px}
@@ -88,8 +88,8 @@ button.row:active{background:rgba(0,0,0,.04)}
 .ico.warn{background:var(--warn-bg);color:var(--warn)}
 .ico.bad{background:var(--bad-bg);color:var(--bad)}
 .rmain{flex:1 1 auto;min-width:0;display:grid;gap:1px}
-.rtitle{font-size:16px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rsub{font-size:13px;color:var(--muted);line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rtitle{font-size:16px;line-height:1.4;overflow-wrap:anywhere}
+.rsub{font-size:13px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
 .rend{flex:none;display:flex;align-items:center;gap:8px;text-align:end}
 .rval{font-size:16px;font-weight:700;white-space:nowrap}
 .chev{flex:none;width:18px;height:18px;color:var(--muted)}
@@ -167,9 +167,9 @@ body.dark .switch:checked::after{background:#0b0c0c}
 
 /* ===== التفاصيل ===== */
 .kv{background:var(--card);border-radius:var(--r-card);overflow:hidden}
-.kv>div{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:9px 12px;position:relative;font-size:14px;line-height:1.5}
+.kv>div{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:8px 12px;position:relative;font-size:14px;line-height:1.5}
 .kv>div+div::before{content:"";position:absolute;top:0;inset-inline:16px;border-top:1px solid var(--line)}
-.kv span{color:var(--muted);flex:none;font-size:14px}
+.kv span{color:var(--muted);flex:0 1 42%;min-width:0;font-size:13px;overflow-wrap:anywhere}
 .kv b{font-weight:400;text-align:end;min-width:0;overflow-wrap:anywhere}
 .kv b.strong{font-weight:700}
 .callout{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:var(--r-card);background:var(--card);font-size:14px;line-height:1.7}
@@ -218,7 +218,7 @@ body.dark .toast.error{background:#8c2a22;color:#fff}
 .auth .form-error{background:#3b1c19;color:#ff9c93}
 
 /* ===== شاشات صغيرة ===== */
-@media(max-width:360px){.display{font-size:24px}.hero .big{font-size:28px}.row{padding:12px}.row+.row::before{inset-inline-start:64px}}
+@media(max-width:360px){.display{font-size:24px}.hero .big{font-size:28px}.row{padding:7px 9px}.row+.row::before{inset-inline-start:64px}}
 
 /* ===== U2-أ: نسخ (16)، تقدم الأزرار (26)، هياكل (36)، اتصال (38)، إجراء الفراغ (39) ===== */
 .copy-mini{display:inline-grid;place-items:center;width:36px;height:36px;margin-block:-8px;margin-inline-start:6px;border-radius:var(--r-tile);color:var(--muted);vertical-align:middle}

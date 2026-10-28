@@ -88,12 +88,12 @@
     const act = (text, op, cls = 'primary') => K.btn(text, 'protection-path', cls, `data-number="${E(r.number)}" data-company="${E(r.companyId)}" data-operation="${op}"`);
     const co = ['شركة الاتصالات', E(r.companyName)];
     if (r.protected && !r.ownedByRequester)
-      return `<div class="result">${head('shield', 'ok', 'الرقم محمي في أمان')}${K.kv([co, ['حالة الحماية', 'محمي']])}${act('تمديد الحماية', 'extend')}</div>`;
+      return `<div class="result">${head('shield', 'ok', 'الرقم محمي في أمان')}${K.kv([co])}${act('تمديد الحماية', 'extend')}</div>`;
     if (r.protected)
-      return `<div class="result">${head('shield', 'ok', 'حماية رقمك سارية')}${K.kv([co, ['حالة الاشتراك', 'ساري'], ['بداية الاشتراك', U.date(r.subscription.startsAt)], ['تاريخ الانتهاء', U.date(r.subscription.endsAt)], ['باقة الحماية', E(r.subscription.packageName || '—')]])}${act('تمديد الحماية', 'extend')}</div>`;
+      return `<div class="result">${head('shield', 'ok', 'حماية رقمك سارية')}${K.kv([co, ['بداية الاشتراك', U.date(r.subscription.startsAt)], ['تاريخ الانتهاء', U.date(r.subscription.endsAt)], ['باقة الحماية', E(r.subscription.packageName || '—')]])}${act('تمديد الحماية', 'extend')}</div>`;
     if (r.expired && r.ownedByRequester)
-      return `<div class="result">${head('clock', 'warn', 'انتهت الحماية المسجلة لهذا الرقم')}${K.kv([co, ['حالة الاشتراك', 'منتهٍ'], ['آخر بداية مسجلة', U.date(r.subscription?.startsAt || '')], ['تاريخ الانتهاء', U.date(r.subscription?.endsAt || '')]])}${K.note('تحقّق من أهلية التجديد قبل المتابعة.')}${act('التحقق من التجديد', 'renew')}</div>`;
-    return `<div class="result">${head('shield', '', 'الحماية غير مفعّلة في أمان')}${K.kv([co, ['حالة الحماية', 'غير مفعّلة']])}${K.note('الحالة المعروضة تخص بيانات أمان.')}${act('تفعيل الحماية', 'subscribe')}${r.added ? K.note('الرقم مضاف إلى حسابك بالفعل.') : K.btn('إضافة إلى أرقامي', 'add-search-number', '', `data-number="${E(r.number)}"`)}</div>`;
+      return `<div class="result">${head('clock', 'warn', 'انتهت الحماية المسجلة لهذا الرقم')}${K.kv([co, ['آخر بداية مسجلة', U.date(r.subscription?.startsAt || '')], ['تاريخ الانتهاء', U.date(r.subscription?.endsAt || '')]])}${K.note('تحقّق من أهلية التجديد قبل المتابعة.')}${act('التحقق من التجديد', 'renew')}</div>`;
+    return `<div class="result">${head('shield', '', 'الحماية غير مفعّلة في أمان')}${K.kv([co])}${K.note('الحالة المعروضة تخص بيانات أمان.')}${act('تفعيل الحماية', 'subscribe')}${r.added ? K.note('الرقم مضاف إلى حسابك بالفعل.') : K.btn('إضافة إلى أرقامي', 'add-search-number', '', `data-number="${E(r.number)}"`)}</div>`;
   }
   function home(d, c, x) {
     const ns = owned(d, c.id), unreadN = x.noticeDot ? notices(d, c.id).filter(n => !n.readAt).length : 0;
@@ -164,17 +164,16 @@
     const latest = d.subscriptions.filter(v => v.numberId === n.id).sort(byNew)[0];
     const packs = (d.protectionPackages || []).filter(p => p.companyId === co?.id && p.active !== false);
     const op = st.key === 'active' ? 'extend' : latest ? 'renew' : 'subscribe';
-    const label2 = st.key === 'active' ? (follower ? `سارٍ · ${N(st.left)} يوم متبقٍ · متابعة فقط` : `سارٍ — ${N(st.left)} يوم متبقٍ`) : latest ? 'منتهٍ أو غير ساري' : 'غير محمي';
+    const label2 = st.key === 'active' ? (follower ? 'سارٍ · متابعة فقط' : 'سارٍ') : latest ? 'منتهٍ أو غير ساري' : 'غير محمي';
     const rows = [['رقم الهاتف', `<span class="ltr">${E(n.number)}</span>`], ['الشركة', E(co?.name || '—')], ['حالة الاشتراك', label2]];
     if (s) rows.push(['بداية الاشتراك', U.date(s.startsAt)], ['تاريخ الانتهاء', U.date(s.endsAt)], ['المدة المتبقية', `${N(st.left)} يوم`]);
-    const hero = `<div class="hero"><div class="hero-top"><span class="ico">${K.ico('shield')}</span><div><h2 class="ltr">${E(n.number)}</h2><p>${E(co?.name || '—')}</p></div></div><span class="pill ${st.tone === 'ok' ? 'ok' : st.tone === 'warn' ? 'warn' : ''}">${E(label2)}</span>${s ? progress(s) : ''}</div>`;
     const history = follower ? K.note('أنت تتابع هذا الاشتراك ولا تملكه؛ التمديد والتجديد من صاحبه، ويصلك إشعار عند تغيّر حالته إذا فعّلت التنبيهات.')
       : (() => { const ops = (d.protectionOperations || []).filter(o => o.numberId === n.id && o.customerId === id).sort(byNew); return ops.length ? K.section('سجل التجديد') + K.card(ops.map(o => K.row({ icon: 'repeat', title: `${OP_LABEL[o.type] || 'عملية حماية'}${o.packageSnapshot?.name ? ' — ' + E(o.packageSnapshot.name) : ''}`, sub: U.date(o.createdAt), sub2: `حتى ${U.date(o.endsAt)}`, val: `${N(o.pointsCost)} نقطة`, plain: true }))) : ''; })();
     let foot = '';
     if (!follower && packs.length) foot += K.btn(op === 'extend' ? 'تمديد الاشتراك' : op === 'renew' ? 'تجديد الاشتراك' : 'تفعيل الاشتراك', 'protection-path', 'primary', `data-number="${E(n.number)}" data-company="${E(co?.id || '')}" data-operation="${op}"`);
     if (st.key === 'active') foot += K.btn(n.radar ? 'إيقاف تنبيهات تغيّر الحالة' : 'تفعيل تنبيهات تغيّر الحالة', 'radar-toggle', '', `data-id="${E(n.id)}"`, 'bell');
     foot += K.btn('إشعارات الرقم', 'number-notifications', '', `data-id="${E(n.id)}"`, 'bell');
-    return { title: 'تفاصيل الاشتراك', body: hero + K.kv(rows) + history + (!follower && !packs.length ? K.note('لا توجد باقات حماية متاحة لهذه الشركة حاليًا.') : ''), foot };
+    return { title: 'تفاصيل الاشتراك', body: K.kv(rows) + history + (!follower && !packs.length ? K.note('لا توجد باقات حماية متاحة لهذه الشركة حاليًا.') : ''), foot };
   }
 
   /* ===================== شراء النقاط والسجلات ===================== */
@@ -272,7 +271,7 @@
     } else if (kind === 'request') {
       const x = d.purchaseRequests.find(v => v.id === id && v.customerId === c.id); if (!x) return null;
       title = 'تفاصيل طلب النقاط';
-      rows = [['رقم الطلب', `<span class="ltr">${E(x.id)}</span>${K.copyBtn(x.id, 'رقم الطلب')}`], ['الباقة', E(x.packageSnapshot.name)], ['النقاط', N(x.packageSnapshot.points)], ['القيمة المالية', `${N(x.packageSnapshot.price)} ر.ي`], ['وسيلة الدفع', E(x.paymentMethodSnapshot.name)], ['المرجع', `<span class="ltr">${E(x.paymentReference)}</span>${K.copyBtn(x.paymentReference, 'المرجع')}`], ['الحالة', label(x.status)], ['تاريخ الطلب', U.date(x.createdAt)], ['تاريخ المراجعة', U.date(x.reviewedAt)], ['ملاحظة الإدارة', E(x.reviewNote || '—')]];
+      rows = [['رقم الطلب', `<span class="ltr">${E(x.id)}</span>${K.copyBtn(x.id, 'رقم الطلب')}`], ['الباقة', E(x.packageSnapshot.name)], ['النقاط', N(x.packageSnapshot.points)], ['القيمة المالية', `${N(x.packageSnapshot.price)} ر.ي`], ['وسيلة الدفع', E(x.paymentMethodSnapshot.name)], ['المرجع', `<span class="ltr">${E(x.paymentReference)}</span>${K.copyBtn(x.paymentReference, 'المرجع')}`], ['ملاحظة الإدارة', E(x.reviewNote || '—')]];
     } else if (kind === 'subscription') {
       const x = d.subscriptions.find(v => v.id === id && v.customerId === c.id); if (!x) return null;
       const n = numberFor(x.numberId);
@@ -298,7 +297,7 @@
   }
   function account(d, c) {
     const sub = D.isSubscriber(d, c.id);
-    const profile = `<section class="account-profile"><div class="hero center"><span class="ico">${K.ico('user')}</span><h2>${E(c.name)}</h2><p class="ltr" style="color:var(--hero-muted)">${E(c.email)}</p></div>${K.section('بيانات الحساب')}${K.kv([['البريد الإلكتروني', `<span class="ltr">${E(c.email)}</span>`], ['رصيد أمان', `${N(D.balance(c.id, d))} نقطة`], ['الصفة', sub ? 'مشترك' : 'حساب عميل غير مشترك']])}</section>`;
+    const profile = `<section class="account-profile"><div class="hero center"><span class="ico">${K.ico('user')}</span><h2>${E(c.name)}</h2><p class="ltr" style="color:var(--hero-muted)">${E(c.email)}</p></div>${K.section('بيانات الحساب')}${K.kv([['رصيد أمان', `${N(D.balance(c.id, d))} نقطة`], ['الصفة', sub ? 'مشترك' : 'حساب عميل غير مشترك']])}</section>`;
     const links = K.card([
       K.row({ icon: 'copy', title: 'معرّف الحساب', sub: `<span class="ltr">${E(c.accountId || c.id)}</span>`, act: 'copy-account-id' }),
       K.row({ icon: 'wallet', title: 'رصيد النقاط وحركتها', to: 'points' }),

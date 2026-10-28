@@ -1,8 +1,7 @@
 /* AMAN — أنماط الوصول واللغة المشتركة (البنود 106 و107). تُحمَّل بعد ملف نمط كل تطبيق. */
 
-/* تركيز واضح للوحة المفاتيح */
-:focus-visible { outline: 3px solid #0b5fff; outline-offset: 2px; }
-body.dark :focus-visible { outline-color: #8ab4ff; }
+/* تركيز واضح للوحة المفاتيح بلون النص الحالي، متسق مع الوضعين الفاتح والداكن */
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
 /* أحجام لمس لا تقل عن 44px */

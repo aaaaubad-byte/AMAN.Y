@@ -21,7 +21,7 @@
       const closed = t.status === 'closed';
       return `${K.section(t.subject)}${K.note(SP.TICKET_STATUS[t.status])}${t.messages.map(bubble).join('')}${closed ? K.note('التذكرة مغلقة. افتح تذكرة جديدة إن احتجت مساعدة أخرى.') : `${K.fields(area('cs_reply', 'ردك', 3))}<div style="margin-top:8px">${K.btn('إرسال الرد', 'cs-reply', 'primary', `data-id="${E(t.id)}"`)}</div>`}<div style="margin-top:8px">${K.btn('كل التذاكر', 'cs-list')}</div>`;
     }
-    const rows = v.tickets.map(x => K.row({ icon: 'inbox', tone: x.unreadCustomer ? 'warn' : '', title: x.subject, sub: E(SP.TICKET_STATUS[x.status]), sub2: E(stamp(SP.lastAt(x))), pill: x.unreadCustomer ? K.pill('رد جديد', 'bad') : K.pill(SP.TICKET_STATUS[x.status], TONE[x.status]), act: 'cs-open', attrs: `data-id="${E(x.id)}"` }));
+    const rows = v.tickets.map(x => K.row({ icon: 'inbox', tone: x.unreadCustomer ? 'warn' : '', title: x.subject, sub: E(stamp(SP.lastAt(x))), sub2: x.unreadCustomer ? `الحالة: ${E(SP.TICKET_STATUS[x.status])}` : '', pill: x.unreadCustomer ? K.pill('رد جديد', 'bad') : K.pill(SP.TICKET_STATUS[x.status], TONE[x.status]), act: 'cs-open', attrs: `data-id="${E(x.id)}"` }));
     return `${K.section('الدعم', N(v.tickets.length))}${rows.length ? K.card(rows) : K.empty('لم تفتح أي تذكرة بعد. اكتب لنا إن احتجت مساعدة.', 'inbox', 'لا توجد تذاكر')}<div style="margin-top:8px">${K.btn('تذكرة جديدة', 'cs-new', 'primary', '', 'plus')}</div>`;
   }
   function couponBlock(v) {
