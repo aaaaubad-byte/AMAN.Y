@@ -293,6 +293,129 @@ function registerTools(server) {
       };
     }
   );
+
+  // معلومات المستودع
+  server.tool(
+    "get_repository_info",
+    "عرض معلومات المستودع والفرع الافتراضي والصلاحيات المتاحة.",
+    { repository: repoSchema.optional().default("AMAN.Y") },
+    async ({ repository = "AMAN.Y" }) => {
+      const data = await github(getRepo(repository), "");
+      return { content: [{ type: "text", text: JSON.stringify({
+        full_name: data.full_name, description: data.description,
+        default_branch: data.default_branch, visibility: data.visibility,
+        archived: data.archived, permissions: data.permissions
+      }, null, 2) }] };
+    }
+  );
+
+  // عرض جميع الملفات في الشجرة مع إمكانية التصفية بالمجلد
+  server.tool(
+    "list_tree",
+    "عرض شجرة ملفات المستودع كاملة أو داخل مجلد، مع تحديد الفرع.",
+    {
+      repository: repoSchema.optional().default("AMAN.Y"),
+      branch: z.string().min(1).optional().default("main"),
+      path: z.string().optional().default("")
+    },
+    async ({ repository = "AMAN.Y", branch = "main", path = "" }) => {
+      const repo = getRepo(repository);
+      const ref = await github(repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
+      const commit = await github(repo, `/git/commits/${ref.object.sha}`);
+      const tree = await github(repo, `/git/trees/${commit.tree.sha}?recursive=1`);
+      const prefix = path.replace(/^\\/+|\\/+$/g, "");
+      const entries = (tree.tree || []).filter(item =>
+        !prefix || item.path === prefix || item.path.startsWith(prefix + "/")
+      ).map(item => ({ path: item.path, type: item.type, size: item.size, sha: item.sha }));
+      return { content: [{ type: "text", text: JSON.stringify({
+        repository: repo, branch, truncated: tree.truncated || false, entries
+      }, null, 2) }] };
+    }
+  );
+
+  // عرض الفروع
+  server.tool(
+    "list_branches",
+    "عرض فروع المستودع مع آخر التزام لكل فرع.",
+    { repository: repoSchema.optional().default("AMAN.Y"), page: z.number().int().min(1).max(100).optional().default(1) },
+    async ({ repository = "AMAN.Y", page = 1 }) => {
+      const repo = getRepo(repository);
+      const data = await github(repo, `/branches?per_page=100&page=${page}`);
+      return { content: [{ type: "text", text: JSON.stringify(data.map(b => ({
+        name: b.name, commit: b.commit.sha, protected: b.protected
+      })), null, 2) }] };
+    }
+  );
+
+  // سجل الالتزامات وتاريخ ملف محدد
+  server.tool(
+    "list_commits",
+    "عرض سجل الالتزامات، ويمكن تقييده بفرع أو ملف محدد.",
+    {
+      repository: repoSchema.optional().default("AMAN.Y"),
+      branch: z.string().optional().default("main"),
+      path: z.string().optional(),
+      per_page: z.number().int().min(1).max(100).optional().default(30)
+    },
+    async ({ repository = "AMAN.Y", branch = "main", path, per_page = 30 }) => {
+      const repo = getRepo(repository);
+      const params = new URLSearchParams({ sha: branch, per_page: String(per_page) });
+      if (path) params.set("path", path);
+      const data = await github(repo, `/commits?${params}`);
+      return { content: [{ type: "text", text: JSON.stringify(data.map(c => ({
+        sha: c.sha, message: c.commit.message, author: c.commit.author,
+        date: c.commit.author?.date, url: c.html_url
+      })), null, 2) }] };
+    }
+  );
+
+  // مقارنة فرعين أو التزامين
+  server.tool(
+    "compare_refs",
+    "مقارنة فرعين أو التزامين وإظهار الملفات والتغييرات.",
+    {
+      repository: repoSchema.optional().default("AMAN.Y"),
+      base: z.string().min(1),
+      head: z.string().min(1)
+    },
+    async ({ repository = "AMAN.Y", base, head }) => {
+      const repo = getRepo(repository);
+      const data = await github(repo, `/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`);
+      return { content: [{ type: "text", text: JSON.stringify({
+        status: data.status, ahead_by: data.ahead_by, behind_by: data.behind_by,
+        total_commits: data.total_commits,
+        files: (data.files || []).map(f => ({
+          filename: f.filename, status: f.status, additions: f.additions,
+          deletions: f.deletions, changes: f.changes, patch: f.patch
+        }))
+      }, null, 2) }] };
+    }
+  );
+
+  // إنشاء فرع من فرع/التزام معروف
+  server.tool(
+    "create_branch",
+    "إنشاء فرع جديد انطلاقًا من فرع أو التزام محدد.",
+    {
+      repository: repoSchema.optional().default("AMAN.Y"),
+      branch_name: z.string().min(1),
+      source: z.string().min(1).optional().default("main")
+    },
+    async ({ repository = "AMAN.Y", branch_name, source = "main" }) => {
+      const repo = getRepo(repository);
+      const sourceRef = source.match(/^[0-9a-f]{40}$/i)
+        ? source
+        : (await github(repo, `/git/ref/heads/${encodeURIComponent(source)}`)).object.sha;
+      const created = await github(repo, "/git/refs", {
+        method: "POST",
+        body: JSON.stringify({ ref: `refs/heads/${branch_name}`, sha: sourceRef })
+      });
+      return { content: [{ type: "text", text: JSON.stringify({
+        success: true, branch: created.ref.replace("refs/heads/", ""),
+        sha: created.object.sha
+      }, null, 2) }] };
+    }
+  );
 }
 
 app.get("/", (_req, res) => {
