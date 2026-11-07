@@ -8,66 +8,73 @@ const OWNER = "aaaaubad-byte";
 const PORT = process.env.PORT || 3000;
 
 // المستودعات المسموح للخادم بالعمل عليها
-const ALLOWED_REPOS = ["AMAN.Y", "AMAN.C"];
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
-const repoSchema = z.enum(["AMAN.Y", "AMAN.C"]);
+const repoSchema = z.string().trim().min(1).max(200);
 
 function getRepo(repository = "AMAN.Y") {
-  const parsed = repoSchema.safeParse(repository);
+  const value = String(repository || "AMAN.Y").trim();
+  const parts = value.split("/");
 
-  if (!parsed.success || !ALLOWED_REPOS.includes(repository)) {
-    throw new Error("المستودع غير مسموح به.");
+  if (parts.length === 1 && /^[A-Za-z0-9_.-]+$/.test(parts[0])) {
+    return `${OWNER}/${parts[0]}`;
   }
 
-  return parsed.data;
+  if (
+    parts.length === 2 &&
+    parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part))
+  ) {
+    return `${parts[0]}/${parts[1]}`;
+  }
+
+  throw new Error("صيغة المستودع غير صحيحة. استخدم owner/repository.");
 }
 
 function encodePath(path = "") {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-async function github(repository, path, options = {}) {
-  const repo = getRepo(repository);
-
+async function githubApi(path, options = {}) {
   if (!process.env.GH_TOKEN) {
     throw new Error("GH_TOKEN غير مضبوط في إعدادات الخادم.");
   }
 
-  const response = await fetch(
-    `https://api.github.com/repos/${OWNER}/${repo}${path}`,
-    {
-      ...options,
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${process.env.GH_TOKEN}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    }
-  );
+  const response = await fetch(`https://api.github.com${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${process.env.GH_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
 
-  const text = await response.text();
+  const responseText = await response.text();
   let data;
 
   try {
-    data = text ? JSON.parse(text) : {};
+    data = responseText ? JSON.parse(responseText) : {};
   } catch {
-    data = { message: text };
+    data = { message: responseText };
   }
 
   if (!response.ok) {
     throw new Error(
       `GitHub HTTP ${response.status}: ${
-        data.message || text || "خطأ غير معروف"
+        data.message || responseText || "خطأ غير معروف"
       }`
     );
   }
 
   return data;
+}
+
+async function github(repository, path, options = {}) {
+  const repo = getRepo(repository);
+  return githubApi(`/repos/${repo}${path}`, options);
 }
 
 function registerTools(server) {
@@ -294,6 +301,35 @@ function registerTools(server) {
     }
   );
 
+  // اكتشاف المستودعات التي يستطيع التوكن الحالي الوصول إليها
+  server.tool(
+    "list_accessible_repositories",
+    "عرض المستودعات التي يسمح توكن GitHub الحالي بالوصول إليها، مع صلاحياته الفعلية لكل مستودع.",
+    {
+      page: z.number().int().min(1).max(100).optional().default(1),
+      per_page: z.number().int().min(1).max(100).optional().default(100),
+    },
+    async ({ page = 1, per_page = 100 }) => {
+      const data = await githubApi(
+        `/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=updated&per_page=${per_page}&page=${page}`
+      );
+
+      const repositories = data.map((item) => ({
+        full_name: item.full_name,
+        private: item.private,
+        default_branch: item.default_branch,
+        permissions: item.permissions || {},
+      }));
+
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ page, per_page, repositories }, null, 2),
+        }],
+      };
+    }
+  );
+
   // معلومات المستودع
   server.tool(
     "get_repository_info",
@@ -323,7 +359,7 @@ function registerTools(server) {
       const ref = await github(repo, `/git/ref/heads/${encodeURIComponent(branch)}`);
       const commit = await github(repo, `/git/commits/${ref.object.sha}`);
       const tree = await github(repo, `/git/trees/${commit.tree.sha}?recursive=1`);
-      const prefix = path.replace(/^\\/+|\\/+$/g, "");
+      const prefix = path.replace(/^\/+|\/+$/g, "");
       const entries = (tree.tree || []).filter(item =>
         !prefix || item.path === prefix || item.path.startsWith(prefix + "/")
       ).map(item => ({ path: item.path, type: item.type, size: item.size, sha: item.sha }));
